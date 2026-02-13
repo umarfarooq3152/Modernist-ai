@@ -221,7 +221,7 @@ const AIChatAgent: React.FC = () => {
   // Build compact inventory context (minimized to save tokens)
   const buildInventoryContext = (): string => {
     return allProducts.map(p => 
-      `[${p.id}] ${p.name} $${p.price} (${p.category}) [${p.tags.join(',')}]`
+      `[${p.id}] ${p.name} $${p.price} (${p.category}) [${(p.tags || []).join(',')}]`
     ).join('\n');
   };
 
@@ -477,6 +477,7 @@ const AIChatAgent: React.FC = () => {
   };
 
   const semanticSearch = (query: string, category?: string): Product[] => {
+    try {
     const q = query.toLowerCase();
     
     // Keyword expansion map for vibe-based search
@@ -502,10 +503,10 @@ const AIChatAgent: React.FC = () => {
     searchTerms = [...new Set(searchTerms)];
 
     let results = allProducts.filter(p => {
-      const matchesCategory = !category || category === 'All' || p.category.toLowerCase() === category.toLowerCase();
+      const matchesCategory = !category || category === 'All' || (p.category || '').toLowerCase() === category.toLowerCase();
       if (!matchesCategory) return false;
       
-      const text = `${p.name} ${p.description} ${p.tags.join(' ')} ${p.category}`.toLowerCase();
+      const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
       return searchTerms.some(term => text.includes(term));
     });
 
@@ -524,12 +525,16 @@ const AIChatAgent: React.FC = () => {
     // If nothing matched, try individual word matching against all products
     if (results.length === 0) {
       results = allProducts.filter(p => {
-        const text = `${p.name} ${p.description} ${p.tags.join(' ')} ${p.category}`.toLowerCase();
+        const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
         return searchTerms.some(t => text.includes(t));
       });
     }
     
     return results;
+    } catch (e) {
+      console.error('[semanticSearch] crashed:', e);
+      return [];
+    }
   };
 
   const findProductByName = (input: string): Product | undefined => {
@@ -786,14 +791,14 @@ const AIChatAgent: React.FC = () => {
     // ── RECOMMEND ──
     if (/\b(recommend|suggest|what.*(else|should|goes|pair|match)|complete.*(look|outfit|ensemble))\b/i.test(m)) {
       const cartCategories = cart.map(i => i.product.category);
-      const cartTags = cart.flatMap(i => i.product.tags);
+      const cartTags = cart.flatMap(i => i.product.tags || []);
       const cartIds = cart.map(i => i.product.id);
       
       const recs = allProducts
         .filter(p => !cartIds.includes(p.id))
         .map(p => ({
           product: p,
-          score: (cartTags.filter(t => p.tags.includes(t)).length * 2) + (!cartCategories.includes(p.category) ? 3 : 0)
+          score: (cartTags.filter(t => (p.tags || []).includes(t)).length * 2) + (!cartCategories.includes(p.category) ? 3 : 0)
         }))
         .sort((a, b) => b.score - a.score)
         .slice(0, 4)
@@ -823,7 +828,7 @@ const AIChatAgent: React.FC = () => {
           : "Great value for the quality.";
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: `**${product.name}** — $${product.price}\n\n${product.description}\n\n${priceComment}\n\n📂 ${product.category} • ⭐ ${avgRating}/5 (${reviewCount} reviews) • 🏷️ ${product.tags.join(', ')}`
+          text: `**${product.name}** — $${product.price}\n\n${product.description}\n\n${priceComment}\n\n📂 ${product.category} • ⭐ ${avgRating}/5 (${reviewCount} reviews) • 🏷️ ${(product.tags || []).join(', ')}`
         }]);
         return { handled: true, intent: 'inventory_check' };
       }
@@ -1170,7 +1175,7 @@ CURRENT STATE:
           } else if (fnName === 'check_inventory') {
             const product = allProducts.find(p => p.id === args.product_name_or_id || p.name.toLowerCase().includes((args.product_name_or_id || '').toLowerCase()));
             if (product) {
-              setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} — $${product.price}\n\n${product.description}\n\nCategory: ${product.category} | Tags: ${product.tags.join(', ')}` }]);
+              setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} — $${product.price}\n\n${product.description}\n\nCategory: ${product.category} | Tags: ${(product.tags || []).join(', ')}` }]);
               didShowSomething = true;
             }
           }

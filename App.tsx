@@ -16,6 +16,40 @@ import Profile from './pages/Profile';
 import Admin from './pages/Admin';
 import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
 
+// Error Boundary to prevent blank screens
+// @ts-ignore — React class component type workaround
+class ErrorBoundary extends React.Component {
+  constructor(props: any) {
+    super(props);
+    // @ts-ignore
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: any) {
+    console.error('[ErrorBoundary] Caught:', error, info?.componentStack);
+  }
+  render() {
+    // @ts-ignore
+    if (this.state.hasError) {
+      // @ts-ignore
+      const err = this.state.error;
+      return React.createElement('div', { style: { padding: 40, fontFamily: 'monospace', background: '#111', color: '#f55', minHeight: '100vh' } },
+        React.createElement('h1', { style: { fontSize: 24, marginBottom: 16 } }, 'Something crashed'),
+        React.createElement('pre', { style: { whiteSpace: 'pre-wrap', color: '#faa', fontSize: 14 } }, err?.message),
+        React.createElement('pre', { style: { whiteSpace: 'pre-wrap', color: '#888', fontSize: 12, marginTop: 12 } }, err?.stack),
+        React.createElement('button', { 
+          onClick: () => window.location.reload(),
+          style: { marginTop: 24, padding: '12px 24px', background: '#fff', color: '#000', border: 'none', cursor: 'pointer', fontWeight: 'bold' }
+        }, 'Reload App')
+      );
+    }
+    // @ts-ignore
+    return this.props.children;
+  }
+}
+
 const QuickViewModal: React.FC = () => {
   const { quickViewProduct, setQuickViewProduct, addToCart } = useStore();
   
@@ -279,6 +313,7 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
+    <ErrorBoundary>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <AuthProvider>
         <StoreProvider>
@@ -288,6 +323,7 @@ const App: React.FC = () => {
         </StoreProvider>
       </AuthProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   );
 };
 

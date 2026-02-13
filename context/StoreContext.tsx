@@ -1,9 +1,8 @@
-
 import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo, useEffect, useState } from 'react';
 import { Product, CartItem, StoreState, StoreAction, UserMood, SortOrder, ClerkLog, OrderRecord, Review } from '../types';
 import { productsData } from '../data/products';
 import { supabase } from '../lib/supabase';
-import { searchInERP, syncFromN8N, createInERP } from '../lib/actions/sync';
+import { searchInERP, fetchERPProducts, createInERP, syncFromN8N } from '../lib/actions/sync';
 
 interface Toast {
   id: string;
@@ -28,7 +27,6 @@ interface StoreContextValue extends StoreState {
   toggleCart: () => void;
   openCart: () => void;
   toggleSearch: () => void;
-  toggleTheme: () => void;
   filterByCategory: (category: string) => void;
   searchProducts: (query: string) => void;
   updateProductFilter: (filter: { category?: string; tag?: string; query?: string; productIds?: string[] }) => void;
@@ -47,6 +45,7 @@ interface StoreContextValue extends StoreState {
   logClerkInteraction: (log: Partial<ClerkLog>) => Promise<void>;
   fetchUserOrders: (userId: string) => Promise<OrderRecord[]>;
   fetchUserReviews: (userId: string) => Promise<Review[]>;
+  toggleTheme: () => void;
 }
 
 const initialState: StoreState = {
@@ -142,54 +141,50 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       };
     case 'SEARCH_PRODUCTS':
       const query = action.payload.toLowerCase();
-      return {
-        ...state,
-        products: state.allProducts.filter(
+      try {
+        const searchResults = state.allProducts.filter(
           p =>
-            p.name.toLowerCase().includes(query) ||
-            p.description.toLowerCase().includes(query) ||
-            p.tags.some(t => t.toLowerCase().includes(query))
-        ),
-      };
+            (p.name || '').toLowerCase().includes(query) ||
+            (p.description || '').toLowerCase().includes(query) ||
+            (p.tags || []).some(t => (t || '').toLowerCase().includes(query))
+        );
+        return { ...state, products: searchResults.length > 0 ? searchResults : state.allProducts };
+      } catch (e) {
+        console.error('[REDUCER] SEARCH_PRODUCTS error:', e);
+        return state;
+      }
     case 'UPDATE_PRODUCT_FILTER':
       let filtered = state.allProducts;
-      console.log('[FILTER] UPDATE_PRODUCT_FILTER called. payload:', JSON.stringify({ query: action.payload.query, category: action.payload.category, productIds: action.payload.productIds?.length ?? 0 }));
-      console.log('[FILTER] allProducts count:', state.allProducts.length);
-      // Priority 1: If specific product IDs are provided (from RAG), use those directly
-      if (action.payload.productIds && action.payload.productIds.length > 0) {
-        const idSet = new Set(action.payload.productIds.map((id: string) => id.toLowerCase()));
-        const byId = filtered.filter(p => idSet.has(p.id.toLowerCase()));
-        console.log('[FILTER] ID match: ids passed=', action.payload.productIds.length, 'matched=', byId.length, 'sampleIds:', action.payload.productIds.slice(0, 3), 'sampleAllProductIds:', state.allProducts.slice(0, 3).map(p => p.id));
-        if (byId.length > 0) {
-          filtered = byId;
-        } else {
-          // IDs didn't match — fall through to word matching below
-          console.warn('[FILTER] productIds did not match any allProducts, falling back to query');
+      try {
+        // Priority 1: If specific product IDs provided (from RAG), use them directly
+        if (action.payload.productIds && action.payload.productIds.length > 0) {
+          const idSet = new Set(action.payload.productIds.map((id: string) => id.toLowerCase()));
+          const byId = filtered.filter(p => idSet.has(p.id.toLowerCase()));
+          if (byId.length > 0) filtered = byId;
         }
-      }
-      // Only do text matching if productIds didn't already narrow results
-      if (!action.payload.productIds || action.payload.productIds.length === 0 || filtered.length === state.allProducts.length) {
-        // Category filter
-        if (action.payload.category && action.payload.category !== 'All') {
-          filtered = filtered.filter(p => p.category === action.payload.category);
-        }
-        // Query — split into words and match ANY word against product fields
-        if (action.payload.query) {
-          const stopWords = new Set(['show', 'me', 'find', 'search', 'for', 'the', 'a', 'an', 'i', 'want', 'need', 'get', 'looking', 'browse', 'some', 'any', 'have', 'do', 'you', 'your', 'what', 'can', 'my', 'im', "i'm", 'am', 'please', 'help', 'with', 'of', 'in', 'on', 'to', 'is', 'it', 'that', 'this']);
-          const words = action.payload.query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2 && !stopWords.has(w));
-          if (words.length > 0) {
-            const wordFiltered = filtered.filter(p => {
-              const text = `${p.name} ${p.description} ${p.tags.join(' ')} ${p.category}`.toLowerCase();
-              return words.some((word: string) => text.includes(word));
-            });
-            // Only apply word filter if it produces results — never go blank
-            if (wordFiltered.length > 0) filtered = wordFiltered;
+        // Only do text matching if productIds didn't narrow results
+        if (!action.payload.productIds || action.payload.productIds.length === 0 || filtered.length === state.allProducts.length) {
+          if (action.payload.category && action.payload.category !== 'All') {
+            filtered = filtered.filter(p => (p.category || '') === action.payload.category);
+          }
+          if (action.payload.query) {
+            const stopWords = new Set(['show', 'me', 'find', 'search', 'for', 'the', 'a', 'an', 'i', 'want', 'need', 'get', 'looking', 'browse', 'some', 'any', 'have', 'do', 'you', 'your', 'what', 'can', 'my', 'im', "i'm", 'am', 'please', 'help', 'with', 'of', 'in', 'on', 'to', 'is', 'it', 'that', 'this']);
+            const words = action.payload.query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2 && !stopWords.has(w));
+            if (words.length > 0) {
+              const wordFiltered = filtered.filter(p => {
+                const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
+                return words.some((word: string) => text.includes(word));
+              });
+              if (wordFiltered.length > 0) filtered = wordFiltered;
+            }
           }
         }
+      } catch (e) {
+        console.error('[REDUCER] UPDATE_PRODUCT_FILTER error:', e);
+        filtered = state.allProducts;
       }
-      // Safety net: never return an empty grid from a search action
+      // Safety net: never blank
       if (filtered.length === 0) filtered = state.allProducts;
-      console.log('[FILTER] Final result count:', filtered.length);
       return { ...state, products: filtered };
     case 'SET_SORT_ORDER':
       let sorted = [...state.products];
@@ -221,15 +216,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [isSyncingERP, setIsSyncingERP] = useState(false);
-
-  // Apply theme to document when it changes
-  useEffect(() => {
-    if (state.theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [state.theme]);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -269,7 +255,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const toggleCart = useCallback(() => dispatch({ type: 'TOGGLE_CART' }), []);
   const openCart = useCallback(() => dispatch({ type: 'OPEN_CART' }), []);
   const toggleSearch = useCallback(() => dispatch({ type: 'TOGGLE_SEARCH' }), []);
-  const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
   const filterByCategory = useCallback((category: string) => {
     setActiveVibe(null);
     dispatch({ type: 'FILTER_BY_CATEGORY', payload: category });
@@ -279,7 +264,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const updateProductFilter = useCallback((filter: { category?: string; tag?: string; query?: string; productIds?: string[] }) => {
     if (filter.query) setActiveVibe(filter.query);
     else if (filter.productIds && filter.productIds.length > 0) setActiveVibe('curated selection');
-    // Dispatch immediately — no artificial delay that causes blank screens
     dispatch({ type: 'UPDATE_PRODUCT_FILTER', payload: filter });
   }, []);
 
@@ -301,13 +285,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     dispatch({ type: 'FILTER_BY_CATEGORY', payload: 'All' });
   }, []);
 
-  // Async Methods
+  // Use Local Vector Search via Supabase RPC
   const searchERP = useCallback(async (query: string) => {
     try {
       const results = await searchInERP(query);
       return Array.isArray(results) ? results : [];
     } catch (e) {
-      console.warn("ERP Search encountered an error. Returning local context.");
+      console.warn("Local Vector Search failed. Returning empty archive.");
       return [];
     }
   }, []);
@@ -315,16 +299,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const syncERPProducts = useCallback(async () => {
     setIsSyncingERP(true);
     try {
-      const result = await syncFromN8N();
-      if (result.success) {
-        addToast(result.message || 'Archive synchronized.', 'success');
-        const { data } = await supabase.from('products').select('*');
-        if (data) dispatch({ type: 'SET_PRODUCTS', payload: data as Product[] });
-      } else {
-        addToast(result.error || 'Sync failed.', 'error');
+      const products = await fetchERPProducts();
+      if (products) {
+        dispatch({ type: 'SET_PRODUCTS', payload: products as Product[] });
+        addToast('Archive synchronization verified.', 'success');
       }
     } catch (e) {
-      addToast('Critical sync failure.', 'error');
+      addToast('Sync protocol interrupted.', 'error');
     } finally {
       setIsSyncingERP(false);
     }
@@ -335,13 +316,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const result = await createInERP(product);
       if (result.success) {
-        addToast(`Product ${product.name} documented.`, 'success');
+        addToast(`Product ${product.name} archived and vectorized.`, 'success');
         await syncERPProducts();
       } else {
-        addToast(`Creation failed: ${result.error}`, 'error');
+        addToast(`Archival failed: ${result.error}`, 'error');
       }
     } catch (e) {
-      addToast('Creation interrupted.', 'error');
+      addToast('Documenting interrupted.', 'error');
     } finally {
       setIsSyncingERP(false);
     }
@@ -352,7 +333,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const dbPayload = {
         user_id: log.user_id || null,
         user_offer: log.discount_offered || 0,
-        clerk_response: log.clerk_response || "Log",
+        clerk_response: log.clerk_response || "Audit",
         status: log.negotiation_successful ? 'accepted' : 'pending',
         sentiment: log.clerk_sentiment || 'neutral',
         cart_snapshot: log.cart_snapshot,
@@ -368,29 +349,129 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
       await supabase.from('clerk_logs').insert([dbPayload]);
     } catch (e) {
-      console.error("Interaction logging failure:", e);
+      console.error("Audit logging failure:", e);
     }
   }, []);
 
   const fetchUserOrders = useCallback(async (userId: string) => {
     try {
-      const { data } = await supabase.from('checkouts').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-      return (data as OrderRecord[]) || [];
+      // Fetch checkouts with their items
+      const { data: checkouts, error: checkoutsError } = await supabase
+        .from('checkouts')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (checkoutsError) {
+        console.error('Failed to fetch orders:', checkoutsError);
+        return [];
+      }
+      
+      if (!checkouts || checkouts.length === 0) {
+        return [];
+      }
+      
+      // Fetch items for all orders
+      const orderIds = checkouts.map(c => c.id);
+      const { data: items, error: itemsError } = await supabase
+        .from('checkout_items')
+        .select('*')
+        .in('order_id', orderIds);
+      
+      if (itemsError) {
+        console.error('Failed to fetch order items:', itemsError);
+      }
+      
+      // Group items by order_id
+      const itemsByOrderId: Record<string, any[]> = {};
+      (items || []).forEach(item => {
+        if (!itemsByOrderId[item.order_id]) {
+          itemsByOrderId[item.order_id] = [];
+        }
+        itemsByOrderId[item.order_id].push({
+          id: item.item_id,
+          name: item.name,
+          price: parseFloat(item.price || '0'),
+          quantity: 1, // Assuming quantity is 1 per item
+          image_url: item.image_url || ''
+        });
+      });
+      
+      // Combine checkouts with their items
+      const orders: OrderRecord[] = checkouts.map(checkout => ({
+        id: checkout.id.toString(),
+        created_at: checkout.created_at,
+        user_id: checkout.user_id,
+        total_amount: parseFloat(checkout.total_amount || checkout.amount || '0'),
+        status: checkout.status || 'pending',
+        items: itemsByOrderId[checkout.id] || []
+      }));
+      
+      return orders;
     } catch (e) {
+      console.error('Error fetching user orders:', e);
       return [];
     }
   }, []);
 
   const fetchUserReviews = useCallback(async (userId: string) => {
-    return []; 
+    try {
+      // Fetch reviews for this user
+      const { data: reviewsData, error } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: false });
+      
+      if (error) {
+        console.error('Failed to fetch reviews:', error);
+        return [];
+      }
+      
+      if (!reviewsData || reviewsData.length === 0) {
+        return [];
+      }
+      
+      // Get product IDs to fetch product details
+      const productIds = reviewsData.map(r => r.product_id).filter(Boolean);
+      
+      if (productIds.length === 0) {
+        return reviewsData;
+      }
+      
+      // Fetch product details
+      const { data: productsData } = await supabase
+        .from('products')
+        .select('id, name, image_url')
+        .in('id', productIds);
+      
+      // Create a map of products
+      const productsMap = new Map();
+      (productsData || []).forEach(p => {
+        productsMap.set(p.id, p);
+      });
+      
+      // Combine reviews with product data
+      const reviews = reviewsData.map(review => ({
+        ...review,
+        product: productsMap.get(review.product_id) || null
+      }));
+      
+      return reviews;
+    } catch (e) {
+      console.error('Error fetching user reviews:', e);
+      return [];
+    }
   }, []);
+
+  const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
 
   const value = {
     ...state, cartSubtotal, cartTotal, synergyDiscount, activeVibe, isCurating, isInitialLoading, toasts, quickViewProduct, isSyncingERP,
-    addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch, toggleTheme,
+    addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
-    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews
+    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, toggleTheme
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
