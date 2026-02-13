@@ -1,0 +1,8 @@
+{
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ],
+  "name": "MODERNIST Storefront",
+  "description": ""
+}

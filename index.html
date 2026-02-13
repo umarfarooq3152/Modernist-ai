@@ -1,0 +1,128 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MODERNIST | Premium Lifestyle</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>M</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://js.stripe.com/v3/"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --modernist-blur: blur(20px);
+            --modernist-glass: rgba(255, 255, 255, 0.7);
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --border-color: #000000;
+            --glass-bg: rgba(255, 255, 255, 0.7);
+        }
+        
+        .dark {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --border-color: #ffffff;
+            --glass-bg: rgba(0, 0, 0, 0.7);
+            --modernist-glass: rgba(0, 0, 0, 0.7);
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .font-serif-elegant {
+            font-family: 'Bodoni Moda', serif;
+        }
+        .font-clerk {
+            font-family: 'Playfair Display', serif;
+        }
+        .glass {
+            background: var(--modernist-glass);
+            backdrop-filter: var(--modernist-blur);
+            -webkit-backdrop-filter: var(--modernist-blur);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        @keyframes pageReveal {
+            from { opacity: 0; transform: translateY(20px); filter: blur(10px); }
+            to { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+        .page-reveal {
+            animation: pageReveal 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes loaderRotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .modern-loader {
+            width: 32px;
+            height: 32px;
+            border: 1px solid black;
+            border-top-color: transparent;
+            animation: loaderRotate 0.8s linear infinite;
+        }
+        .dark .modern-loader {
+            border-color: white;
+            border-top-color: transparent;
+        }
+
+        @keyframes toastIn {
+            from { transform: translate(-50%, 40px); opacity: 0; filter: blur(4px); }
+            to { transform: translate(-50%, 0); opacity: 1; filter: blur(0); }
+        }
+        .toast-animate {
+            animation: toastIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .tap-highlight-none {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Prevent zooming on iOS input focus */
+        @media screen and (max-width: 768px) {
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.2.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.39.0",
+    "stripe": "https://esm.sh/stripe@^14.0.0",
+    "recharts": "https://esm.sh/recharts@^2.12.0",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@^5.90.21",
+    "next/": "https://esm.sh/next@^16.1.6/",
+    "@supabase/ssr": "https://esm.sh/@supabase/ssr@^0.8.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-white text-black antialiased">
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
