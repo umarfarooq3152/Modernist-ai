@@ -1,12 +1,25 @@
 
-import React from 'react';
-import { X, Minus, Plus, ShoppingBag, ArrowRight, Tag, Sparkles, Zap } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Minus, Plus, ShoppingBag, ArrowRight, Tag, Sparkles, Zap, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 
 const CartSidebar: React.FC = () => {
   const { cart, isCartOpen, toggleCart, removeFromCart, updateQuantity, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, synergyDiscount } = useStore();
   const navigate = useNavigate();
+  const [totalFlashClass, setTotalFlashClass] = useState('');
+  const prevDiscountRef = useRef(negotiatedDiscount);
+
+  // Flash the total when discount/surcharge changes
+  useEffect(() => {
+    if (negotiatedDiscount !== prevDiscountRef.current) {
+      const isSurcharge = negotiatedDiscount < 0;
+      setTotalFlashClass(isSurcharge ? 'surcharge-flash' : 'price-flash');
+      const timer = setTimeout(() => setTotalFlashClass(''), 900);
+      prevDiscountRef.current = negotiatedDiscount;
+      return () => clearTimeout(timer);
+    }
+  }, [negotiatedDiscount]);
 
   if (!isCartOpen) return null;
 
@@ -95,9 +108,16 @@ const CartSidebar: React.FC = () => {
               )}
 
               {negotiatedDiscount > 0 && (
-                <div className="flex justify-between text-xs uppercase tracking-widest text-green-600 font-bold">
+                <div className="flex justify-between text-xs uppercase tracking-widest text-green-600 font-bold animate-in fade-in slide-in-from-left duration-500">
                   <span className="flex items-center gap-1"><Tag size={12} /> Discount ({appliedCoupon})</span>
                   <span>-{negotiatedDiscount}%</span>
+                </div>
+              )}
+
+              {negotiatedDiscount < 0 && (
+                <div className="flex justify-between text-xs uppercase tracking-widest text-red-500 font-bold animate-in fade-in slide-in-from-left duration-500 bg-red-50 dark:bg-red-950/30 px-2 py-2 border-l-4 border-red-500">
+                  <span className="flex items-center gap-1"><AlertTriangle size={12} /> Luxury Tax ({appliedCoupon})</span>
+                  <span>+{Math.abs(negotiatedDiscount)}%</span>
                 </div>
               )}
 
@@ -107,7 +127,7 @@ const CartSidebar: React.FC = () => {
               </div>
               <div className="flex justify-between items-end border-t border-black/10 dark:border-white/10 pt-4 mt-4">
                 <span className="text-sm font-bold uppercase tracking-widest">Total Acquisition</span>
-                <span className="text-xl font-bold">${cartTotal.toLocaleString()}</span>
+                <span className={`text-xl font-bold transition-all duration-300 ${totalFlashClass} ${negotiatedDiscount < 0 ? 'text-red-500' : ''}`}>${cartTotal.toLocaleString()}</span>
               </div>
             </div>
             

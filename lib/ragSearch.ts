@@ -2,17 +2,21 @@
  * RAG Search Utility — Vector-based Product Search
  * 
  * This module implements Retrieval-Augmented Generation (RAG) for product search.
- * It uses in-browser embeddings (Xenova/all-MiniLM-L6-v2) to find semantically similar products.
+ * It uses a dual-path strategy:
+ *   1. **Supabase RPC (match_products)** — Server-side pgvector similarity search (primary)
+ *   2. **Local Embeddings (Xenova/all-MiniLM-L6-v2)** — In-browser fallback
  * 
  * Workflow:
- * 1. User query → Generate embedding
- * 2. Compare against all product embeddings (cached)
- * 3. Return top N results sorted by similarity
- * 4. Include bottom_price for negotiation logic
+ * 1. User query → Generate embedding via Transformers.js
+ * 2. Call Supabase RPC `match_products` with the embedding vector
+ * 3. Fallback to local cosine similarity if RPC fails
+ * 4. Return top N results sorted by similarity
+ * 5. Include bottom_price for negotiation logic
  */
 
 import { Product } from '../types';
 import { getLocalEmbedding, cosineSimilarity } from './embeddings';
+import { supabase } from './supabase';
 
 interface SearchResult {
   product: Product;
@@ -49,6 +53,78 @@ export async function generateProductEmbeddings(
   }
   
   return embeddingMap;
+}
+
+/**
+ * Search products using Supabase RPC `match_products` (pgvector similarity)
+ * This is the PRIMARY RAG path — server-side vector search against Supabase.
+ * Falls back to local embedding search if the RPC call fails.
+ */
+export async function searchInventoryViaSupabase(
+  options: SearchOptions,
+  allProducts: Product[],
+  productEmbeddingsCache: Map<string, number[]>
+): Promise<SearchResult[]> {
+  const { query, category, minPrice, maxPrice, maxResults = 5 } = options;
+
+  if (!query || query.trim().length === 0) return [];
+
+  try {
+    // Step 1: Embed the user query using Transformers.js
+    const queryEmbedding = await getLocalEmbedding(query);
+
+    // Step 2: Call Supabase RPC `match_products` with the embedding vector
+    const { data: matchedProducts, error } = await supabase.rpc('match_products', {
+      query_embedding: queryEmbedding,
+      match_threshold: 0.3,
+      match_count: maxResults,
+    });
+
+    if (error) {
+      console.warn('[RAG] Supabase RPC match_products failed, falling back to local search:', error.message);
+      return searchInventoryRAG(options, allProducts, productEmbeddingsCache);
+    }
+
+    if (!matchedProducts || matchedProducts.length === 0) {
+      console.log('[RAG] Supabase RPC returned 0 results, falling back to local search');
+      return searchInventoryRAG(options, allProducts, productEmbeddingsCache);
+    }
+
+    // Step 3: Map Supabase results back to our Product type with similarity scores
+    const results: SearchResult[] = matchedProducts
+      .map((match: any) => {
+        // Try to find the full product in our local data for complete metadata
+        const localProduct = allProducts.find(p => p.id === match.id);
+        const product: Product = localProduct || {
+          id: match.id,
+          name: match.name || 'Unknown',
+          price: match.price || 0,
+          bottom_price: match.bottom_price || match.price * 0.7,
+          category: match.category || 'Uncategorized',
+          description: match.description || '',
+          image_url: match.image_url || '',
+          tags: match.tags || [],
+        };
+
+        return {
+          product,
+          similarity_score: match.similarity ?? 0.5,
+          match_reason: `${Math.round((match.similarity ?? 0.5) * 100)}% Supabase vector match for "${query}"`,
+        };
+      })
+      .filter((result: SearchResult) => {
+        if (category && result.product.category !== category) return false;
+        if (minPrice && result.product.price < minPrice) return false;
+        if (maxPrice && result.product.price > maxPrice) return false;
+        return true;
+      });
+
+    console.log(`[RAG] Supabase RPC returned ${results.length} results for "${query}"`);
+    return results;
+  } catch (err) {
+    console.warn('[RAG] Supabase RPC call threw, falling back to local search:', err);
+    return searchInventoryRAG(options, allProducts, productEmbeddingsCache);
+  }
 }
 
 /**
@@ -142,6 +218,12 @@ export async function searchInventoryRAG(
       })
       .sort((a, b) => b.similarity_score - a.similarity_score)
       .slice(0, maxResults);
+
+    // If embedding cache was empty or all scores were too low, fall through to keyword search
+    if (scoredProducts.length === 0) {
+      console.log('[RAG] Embedding search returned 0 results, falling back to keyword search');
+      return fallbackKeywordSearch(options, allProducts);
+    }
 
     return scoredProducts;
   } catch (error) {

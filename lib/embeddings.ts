@@ -1,6 +1,6 @@
 /**
  * Local Embedding Engine using Transformers.js
- * Generates 384-dimension vectors using Xenova/all-MiniLM-L6-v2
+ * Generates 768-dimension vectors using Xenova/nomic-embed-text-v1
  * Completely free — no API key needed, runs in-browser via WASM/WebGPU
  */
 
@@ -19,7 +19,7 @@ async function getExtractor(): Promise<FeatureExtractionPipeline> {
   if (loadPromise) return loadPromise;
 
   isLoading = true;
-  loadPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+  loadPromise = pipeline('feature-extraction', 'Xenova/nomic-embed-text-v1', {
     // @ts-ignore - dtype option for quantized model
     dtype: 'fp32',
   }).then((extractor) => {
@@ -36,7 +36,7 @@ async function getExtractor(): Promise<FeatureExtractionPipeline> {
 }
 
 /**
- * Generate a 384-dimension embedding vector for the given text.
+ * Generate a 768-dimension embedding vector for the given text.
  * Uses mean pooling + normalization for optimal semantic similarity.
  */
 export async function getLocalEmbedding(text: string): Promise<number[]> {

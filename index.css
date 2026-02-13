@@ -83,3 +83,30 @@
   }
 }
 
+/* Cart total flash animation — triggers when discount/surcharge is applied */
+@keyframes priceFlash {
+  0% { transform: scale(1); opacity: 1; }
+  15% { transform: scale(1.18); opacity: 0.85; color: #22c55e; }
+  30% { transform: scale(0.95); }
+  50% { transform: scale(1.1); color: #22c55e; }
+  70% { transform: scale(0.98); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes surchargeFlash {
+  0% { transform: scale(1); opacity: 1; }
+  15% { transform: scale(1.18); opacity: 0.85; color: #ef4444; }
+  30% { transform: scale(0.95); }
+  50% { transform: scale(1.1); color: #ef4444; }
+  70% { transform: scale(0.98); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.price-flash {
+  animation: priceFlash 0.8s ease-in-out;
+}
+
+.surcharge-flash {
+  animation: surchargeFlash 0.8s ease-in-out;
+}
+

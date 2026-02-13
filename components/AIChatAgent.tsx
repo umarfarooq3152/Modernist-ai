@@ -11,6 +11,7 @@ import { getLocalEmbedding, cosineSimilarity, isEmbeddingModelReady } from '../l
 import { CLERK_SYSTEM_PROMPT } from '../lib/clerkSystemPrompt';
 import { generateProductEmbeddings } from '../lib/ragSearch';
 import { handleSearchInventoryToolCall } from '../lib/ragIntegration';
+import { handleGenerateCouponToolCall, CouponResult } from '../lib/ragIntegration';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -199,15 +200,15 @@ const AIChatAgent: React.FC = () => {
         .slice(0, 2);
       if (complementary.length > 0) {
         const recommendations = [
-          `${product.name}—secured. But a piece like this demands companions. May I suggest:`,
-          `Excellent choice. Now, let me show you what completes this narrative:`,
-          `That ${product.category.toLowerCase()} piece? It's a foundation. Here's what builds the story:`,
-          `${product.name} carries weight. These amplify its voice:`,
+          `${product.name}—secured. But a piece like this demands companions. May I suggest: ${complementary.map(c => c.name).join(', ')}? Check the store grid.`,
+          `Excellent choice. Now, let me show you what completes this narrative: ${complementary.map(c => c.name).join(', ')}. The grid has been updated.`,
+          `That ${product.category.toLowerCase()} piece? It's a foundation. I've updated the grid with pieces that build the story.`,
+          `${product.name} carries weight. I've added ${complementary.map(c => c.name).join(' and ')} to the grid — they amplify its voice.`,
         ];
+        updateProductFilter({ query: complementary.map(c => c.name).join(' '), productIds: complementary.map(c => c.id) });
         setMessages(prev => [...prev, { 
           role: 'assistant', 
-          text: recommendations[Math.floor(Math.random() * recommendations.length)],
-          products: complementary
+          text: recommendations[Math.floor(Math.random() * recommendations.length)]
         }]);
       }
     } catch (error) {
@@ -588,8 +589,7 @@ const AIChatAgent: React.FC = () => {
             : "A solid start. These pieces actually work really well together.";
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: `${commentary}\n\n${buildCartContext()}`,
-          products: cart.map(i => i.product)
+          text: `${commentary}\n\n${buildCartContext()}`
         }]);
       }
       return { handled: true, intent: 'show_cart' };
@@ -622,8 +622,7 @@ const AIChatAgent: React.FC = () => {
       const sorted = [...allProducts].sort((a, b) => a.price - b.price).slice(0, 6);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: "Budget-conscious? Smart move. I've sorted the entire store by price — the website grid just updated. Here are your most wallet-friendly options:",
-        products: sorted
+        text: "Budget-conscious? Smart move. I've sorted the entire store by price — the website grid just updated. Check out the most wallet-friendly options on the left."
       }]);
       return { handled: true, intent: 'sort_cheap' };
     }
@@ -633,8 +632,7 @@ const AIChatAgent: React.FC = () => {
       const sorted = [...allProducts].sort((a, b) => b.price - a.price).slice(0, 6);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: "Going for the top shelf? I like your energy. The grid now shows our most investment-worthy pieces first. Feast your eyes:",
-        products: sorted
+        text: "Going for the top shelf? I like your energy. The grid now shows our most investment-worthy pieces first."
       }]);
       return { handled: true, intent: 'sort_expensive' };
     }
@@ -655,8 +653,7 @@ const AIChatAgent: React.FC = () => {
       };
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: categoryComments[cat] || `The store now shows only ${cat}:`,
-        products: filtered
+        text: categoryComments[cat] || `The store now shows only ${cat}. Take a look at the grid.`
       }]);
       return { handled: true, intent: 'filter_category' };
     }
@@ -667,8 +664,7 @@ const AIChatAgent: React.FC = () => {
       const sample = [...allProducts].sort(() => Math.random() - 0.5).slice(0, 6);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: `Filters cleared — the full collection is now at your disposal. Here's a taste of what we're working with:`,
-        products: sample
+        text: `Filters cleared — the full collection is now at your disposal. Browse the grid to explore.`
       }]);
       return { handled: true, intent: 'show_all' };
     }
@@ -688,8 +684,7 @@ const AIChatAgent: React.FC = () => {
         ];
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: addResponses[Math.floor(Math.random() * addResponses.length)],
-          products: [product]
+          text: addResponses[Math.floor(Math.random() * addResponses.length)]
         }]);
         const complementary = allProducts
           .filter(p => p.id !== product.id && p.category !== product.category)
@@ -697,8 +692,7 @@ const AIChatAgent: React.FC = () => {
         if (complementary.length > 0) {
           setTimeout(() => setMessages(prev => [...prev, {
             role: 'assistant', 
-            text: `By the way, these pair really well with that:`, 
-            products: complementary
+            text: `By the way, these pair really well with that: ${complementary.map(c => c.name).join(', ')}. Check the store.`
           }]), 800);
         }
         return { handled: true, intent: 'add_to_cart' };
@@ -807,12 +801,12 @@ const AIChatAgent: React.FC = () => {
       
       if (recs.length > 0) {
         const commentary = cart.length > 0 
-          ? `Based on what's in your bag, these would actually work really well together. The cross-category pairing is *chef's kiss*:`
-          : `Here's what commands attention—versatile pieces that anchor any collection:`;
+          ? `Based on what's in your bag, these would work really well: ${recs.map(r => r.name).join(', ')}. I've updated the store grid.`
+          : `Here's what commands attention: ${recs.map(r => r.name).join(', ')}. Check the store grid.`;
+        updateProductFilter({ query: recs.map(r => r.name).join(' '), productIds: recs.map(r => r.id) });
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: commentary,
-          products: recs
+          text: commentary
         }]);
       }
       return { handled: true, intent: 'recommend' };
@@ -829,8 +823,7 @@ const AIChatAgent: React.FC = () => {
           : "Great value for the quality.";
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: `**${product.name}** — $${product.price}\n\n${product.description}\n\n${priceComment}\n\n📂 ${product.category} • ⭐ ${avgRating}/5 (${reviewCount} reviews) • 🏷️ ${product.tags.join(', ')}`,
-          products: [product]
+          text: `**${product.name}** — $${product.price}\n\n${product.description}\n\n${priceComment}\n\n📂 ${product.category} • ⭐ ${avgRating}/5 (${reviewCount} reviews) • 🏷️ ${product.tags.join(', ')}`
         }]);
         return { handled: true, intent: 'inventory_check' };
       }
@@ -848,25 +841,24 @@ const AIChatAgent: React.FC = () => {
       const searchResults = semanticSearch(m);
       if (searchResults.length > 0) {
         const display = searchResults.slice(0, 6);
-        updateProductFilter({ query: m });
+        updateProductFilter({ query: m, productIds: display.map(p => p.id) });
         
         // Generate contextual response based on query
         let commentary: string;
         if (hasPriceFilter) {
-          commentary = `Smart shopping! Here are ${display.length} pieces that fit your budget:`;
+          commentary = `Smart shopping! I found ${display.length} pieces that fit your budget. The store grid has been updated.`;
         } else if (hasOccasion) {
           const occasion = m.match(/\b(wedding|office|work|casual|formal|summer|winter|evening|date|party|travel)\b/i)?.[1] || 'occasion';
-          commentary = `Perfect for ${occasion}! I've pulled together ${display.length} pieces that'll work beautifully:`;
+          commentary = `Perfect for ${occasion}! I've pulled together ${display.length} pieces — check the store grid.`;
         } else if (hasProductKeywords) {
-          commentary = `Got it! Here's what we have in stock:`;
+          commentary = `Got it! I found what we have in stock — the store grid has been updated.`;
         } else {
-          commentary = `Found ${display.length} pieces that match. Take a look:`;
+          commentary = `Found ${display.length} pieces that match. The store grid is showing them now.`;
         }
         
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: commentary,
-          products: display
+          text: commentary
         }]);
         return { handled: true, intent: 'search' };
       }
@@ -960,9 +952,12 @@ const AIChatAgent: React.FC = () => {
         content: `${CLERK_SYSTEM_PROMPT}
 
 CURRENT STATE:
-- INVENTORY: ${allProducts.length} pieces (Outerwear, Basics, Accessories, Home, Apparel, Footwear)
-- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => i.product.name).join(', ')}
-- RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply surcharge' : ''}`,
+- INVENTORY: ${allProducts.length} pieces across Outerwear, Basics, Accessories, Home, Apparel, Footwear
+- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price} × ${i.quantity})`).join(', ')}
+- CART TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%${negotiatedDiscount < 0 ? ' (SURCHARGE ACTIVE)' : ''}
+- RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply LUXURY TAX surcharge' : ''}
+- EMBEDDING STATUS: ${embeddingModelStatus}
+- PATRON: ${user?.email || 'Guest'}`,
       };
 
       const chatMessages: Groq.Chat.ChatCompletionMessageParam[] = [
@@ -987,7 +982,7 @@ CURRENT STATE:
           try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch(e) {}
 
           if (fnName === 'search_inventory') {
-            // RAG-powered search_inventory tool
+            // RAG-powered search_inventory tool (Supabase RPC → local fallback)
             const ragResult = await handleSearchInventoryToolCall(
               args,
               allProducts,
@@ -1003,11 +998,12 @@ CURRENT STATE:
             } else {
               setMessages(prev => [...prev, {
                 role: 'assistant',
-                text: ragResult.assistantMessage,
-                products: ragResult.products
+                text: ragResult.assistantMessage
               }]);
+              // UI INTEGRATION: Update the product grid immediately
               if (ragResult.products.length > 0) {
-                updateProductFilter({ query: args.query });
+                updateProductFilter({ query: args.query, category: args.category, productIds: ragResult.products.map((p: Product) => p.id) });
+                addToast(`Showing ${ragResult.products.length} results for "${args.query}"`, 'success');
               }
             }
             didShowSomething = true;
@@ -1026,8 +1022,8 @@ CURRENT STATE:
             
             // Use embedding results if available, else fall back to keyword search
             let results = embeddingResults.length > 0 ? embeddingResults : semanticSearch(query, args.category);
-            updateProductFilter({ query: query, category: args.category });
             if (results.length > 0) {
+              updateProductFilter({ query: query, category: args.category, productIds: results.map(p => p.id) });
               // Premium salesperson responses - sell the lifestyle
               const searchResponses = [
                 `Curated for you. These pieces carry weight.`,
@@ -1037,21 +1033,46 @@ CURRENT STATE:
                 `Let me show you pieces that earn their place in your life.`,
               ];
               const response = searchResponses[Math.floor(Math.random() * searchResponses.length)];
-              setMessages(prev => [...prev, { role: 'assistant', text: response, products: results.slice(0, 6) }]);
+              setMessages(prev => [...prev, { role: 'assistant', text: response }]);
             } else {
               setMessages(prev => [...prev, { role: 'assistant', text: "Nothing matches that criteria exactly. Refine your vision—give me a style, an occasion, or a budget." }]);
             }
             didShowSomething = true;
           } else if (fnName === 'add_to_cart') {
-            const product = allProducts.find(p => p.id === args.product_id);
-            addToCartWithQuantity(args.product_id, args.quantity || 1);
+            // NO-MENU PURCHASE: Resolve product by ID or fuzzy name match
+            let product = allProducts.find(p => p.id === args.product_id);
+            if (!product && args.product_id) {
+              // Fuzzy match — AI may pass a name or partial ID
+              const q = args.product_id.toLowerCase();
+              product = allProducts.find(p => 
+                p.name.toLowerCase().includes(q) || 
+                p.id.toLowerCase().includes(q) ||
+                q.includes(p.name.toLowerCase())
+              );
+            }
             if (product) {
+              addToCartWithQuantity(product.id, args.quantity || 1);
+              openCart(); // Show the cart sidebar immediately
               const addResponses = [
-                `${product.name} — secured. A choice of true character.`,
-                `Excellent. ${product.name} will serve you well.`,
-                `Done. That piece earns its place in your collection.`,
+                `${product.name} × ${args.quantity || 1} — secured. No buttons needed, that's how we do it here.`,
+                `Excellent. ${product.name} is in your bag. A choice of true character.`,
+                `Done. ${product.name} earns its place in your collection. Check your bag.`,
+                `${product.name} — added. The archive approves.`,
               ];
-              setMessages(prev => [...prev, { role: 'assistant', text: addResponses[Math.floor(Math.random() * addResponses.length)], products: [product] }]);
+              setMessages(prev => [...prev, { role: 'assistant', text: addResponses[Math.floor(Math.random() * addResponses.length)] }]);
+              addToast(`${product.name} added to bag`, 'success');
+              // Auto-recommend complementary pieces
+              const complementary = allProducts
+                .filter(p => p.id !== product!.id && p.category !== product!.category)
+                .sort(() => Math.random() - 0.5).slice(0, 2);
+              if (complementary.length > 0) {
+                setTimeout(() => setMessages(prev => [...prev, {
+                  role: 'assistant',
+                  text: `By the way — these complete the narrative: ${complementary.map(c => c.name).join(', ')}. Check the store grid.`,
+                }]), 800);
+              }
+            } else {
+              setMessages(prev => [...prev, { role: 'assistant', text: `I couldn't find that exact piece. Want me to search for something similar?` }]);
             }
             didShowSomething = true;
           } else if (fnName === 'remove_from_cart') {
@@ -1079,38 +1100,43 @@ CURRENT STATE:
             setMessages(prev => [...prev, { role: 'assistant', text: uiResponses[Math.floor(Math.random() * uiResponses.length)] }]);
             didShowSomething = true;
           } else if (fnName === 'generate_coupon') {
-            // Groq decided to generate a coupon — apply it
-            const sentiment = (args.sentiment || 'neutral').toLowerCase();
-            if (newRudenessScore >= 3 || sentiment === 'rude') {
-              // Apply surcharge for rudeness
-              const surchargePercent = Math.min(newRudenessScore * 5, 25);
-              applyNegotiatedDiscount(`RUDE-${Math.random().toString(36).substring(2,6).toUpperCase()}`, -surchargePercent);
+            // RAG-backed coupon generation — validates against bottom_price, injects into cart session
+            const couponResult: CouponResult = handleGenerateCouponToolCall(
+              args,
+              cart,
+              newRudenessScore
+            );
+
+            if (couponResult.refused) {
+              // Rudeness surcharge — injected as negative discount into cart session
+              applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
               setMessages(prev => [...prev, {
                 role: 'assistant',
-                text: `Nice try, but manners matter at MODERNIST. Prices just went up ${surchargePercent}%. Come back with a better attitude.`,
+                text: couponResult.message,
                 error: true
               }]);
-              addToast(`${surchargePercent}% surcharge applied`, 'error');
-            } else if (cart.length === 0) {
-              setMessages(prev => [...prev, { role: 'assistant', text: "Add some pieces to your bag first, then we can talk numbers!" }]);
+              addToast(`${Math.abs(couponResult.discountPercent)}% surcharge applied`, 'error');
+            } else if (!couponResult.success) {
+              // Cart empty or other issue
+              setMessages(prev => [...prev, { role: 'assistant', text: couponResult.message }]);
             } else {
-              const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-              const floor = cart.reduce((sum, item) => sum + (item.product.bottom_price * item.quantity), 0);
-              let discountPercent = Math.min(args.discount || 10, cart.length >= 3 ? 25 : 20);
-              const discountedTotal = Math.round(subtotal * (1 - discountPercent / 100));
-              
-              if (discountedTotal < floor) {
-                discountPercent = Math.round(((subtotal - floor) / subtotal) * 100);
-              }
-              
-              const couponCode = args.code || generateCouponCode(args.reason || 'Negotiated', discountPercent);
-              applyNegotiatedDiscount(couponCode, discountPercent);
-              setShowDiscountToast({ code: couponCode, percent: discountPercent, reason: args.reason || 'Negotiated Concession' });
+              // Success — inject coupon directly into cart session
+              applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
+              setShowDiscountToast({ 
+                code: couponResult.couponCode, 
+                percent: couponResult.discountPercent, 
+                reason: couponResult.reason 
+              });
               setMessages(prev => [...prev, {
                 role: 'assistant',
-                text: `${discountPercent}% concession granted. You've earned this.`,
-                coupon: { code: couponCode, percent: discountPercent, reason: args.reason || 'Archival Concession' }
+                text: couponResult.message,
+                coupon: { 
+                  code: couponResult.couponCode, 
+                  percent: couponResult.discountPercent, 
+                  reason: couponResult.reason 
+                }
               }]);
+              addToast(`${couponResult.discountPercent}% discount applied: ${couponResult.couponCode}`, 'success');
             }
             didShowSomething = true;
           } else if (fnName === 'recommend_products') {
@@ -1144,7 +1170,7 @@ CURRENT STATE:
           } else if (fnName === 'check_inventory') {
             const product = allProducts.find(p => p.id === args.product_name_or_id || p.name.toLowerCase().includes((args.product_name_or_id || '').toLowerCase()));
             if (product) {
-              setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} — $${product.price}\n\n${product.description}\n\nCategory: ${product.category} | Tags: ${product.tags.join(', ')}`, products: [product] }]);
+              setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} — $${product.price}\n\n${product.description}\n\nCategory: ${product.category} | Tags: ${product.tags.join(', ')}` }]);
               didShowSomething = true;
             }
           }
@@ -1159,11 +1185,10 @@ CURRENT STATE:
           setMessages(prev => [...prev, { role: 'assistant', text: finalClerkResponse }]);
           didShowSomething = true;
         } else if (finalClerkResponse.length > 20) {
-          // Insert the conversational text before the products that were just shown
+          // Merge the conversational text with the last assistant message
           setMessages(prev => {
             const lastMsg = prev[prev.length - 1];
-            if (lastMsg?.role === 'assistant' && lastMsg.products) {
-              // Prepend text to the last message
+            if (lastMsg?.role === 'assistant') {
               return [...prev.slice(0, -1), { ...lastMsg, text: finalClerkResponse }];
             }
             return [...prev, { role: 'assistant', text: finalClerkResponse }];
@@ -1202,12 +1227,11 @@ CURRENT STATE:
       if (mentionsProduct) {
         const localResults = semanticSearch(userMessage);
         if (localResults.length > 0) {
+          updateProductFilter({ query: userMessage, productIds: localResults.map(p => p.id) });
           setMessages(prev => [...prev, { 
             role: 'assistant', 
-            text: `Good eye! Here's what I found in our collection:`,
-            products: localResults.slice(0, 4)
+            text: `Good eye! I found ${localResults.length} matching pieces — the store grid has been updated.`
           }]);
-          updateProductFilter({ query: userMessage });
         } else {
           setMessages(prev => [...prev, { 
             role: 'assistant', 
@@ -1388,15 +1412,6 @@ CURRENT STATE:
                   <span className="whitespace-pre-line text-sm leading-relaxed">{m.text}</span>
                 </div>
                 {m.coupon && <CouponCard coupon={m.coupon} />}
-                {m.products && m.products.length > 0 && (
-                  <div className="mt-3 w-full">
-                    <div className="flex gap-3 overflow-x-auto pb-3 no-scrollbar">
-                      {m.products.map(product => (
-                        <ProductCardInChat key={product.id} product={product} />
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {m.isTryOn && m.tryOnResult && (
                   <div className="mt-3 w-48 aspect-[3/4] overflow-hidden border border-black/10 dark:border-white/10">
                     <img src={m.tryOnResult} alt="Virtual try-on" className="w-full h-full object-cover" />

@@ -31,7 +31,7 @@ interface StoreContextValue extends StoreState {
   toggleTheme: () => void;
   filterByCategory: (category: string) => void;
   searchProducts: (query: string) => void;
-  updateProductFilter: (filter: { category?: string; tag?: string; query?: string }) => void;
+  updateProductFilter: (filter: { category?: string; tag?: string; query?: string; productIds?: string[] }) => void;
   setSortOrder: (order: SortOrder) => void;
   applyNegotiatedDiscount: (couponCode: string, discountPercent: number) => void;
   setMood: (mood: UserMood) => void;
@@ -153,17 +153,43 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       };
     case 'UPDATE_PRODUCT_FILTER':
       let filtered = state.allProducts;
-      if (action.payload.category && action.payload.category !== 'All') {
-        filtered = filtered.filter(p => p.category === action.payload.category);
+      console.log('[FILTER] UPDATE_PRODUCT_FILTER called. payload:', JSON.stringify({ query: action.payload.query, category: action.payload.category, productIds: action.payload.productIds?.length ?? 0 }));
+      console.log('[FILTER] allProducts count:', state.allProducts.length);
+      // Priority 1: If specific product IDs are provided (from RAG), use those directly
+      if (action.payload.productIds && action.payload.productIds.length > 0) {
+        const idSet = new Set(action.payload.productIds.map((id: string) => id.toLowerCase()));
+        const byId = filtered.filter(p => idSet.has(p.id.toLowerCase()));
+        console.log('[FILTER] ID match: ids passed=', action.payload.productIds.length, 'matched=', byId.length, 'sampleIds:', action.payload.productIds.slice(0, 3), 'sampleAllProductIds:', state.allProducts.slice(0, 3).map(p => p.id));
+        if (byId.length > 0) {
+          filtered = byId;
+        } else {
+          // IDs didn't match — fall through to word matching below
+          console.warn('[FILTER] productIds did not match any allProducts, falling back to query');
+        }
       }
-      if (action.payload.query) {
-        const q = action.payload.query.toLowerCase();
-        filtered = filtered.filter(p => 
-           p.name.toLowerCase().includes(q) || 
-           p.description.toLowerCase().includes(q) ||
-           p.tags.some(t => t.toLowerCase().includes(q))
-        );
+      // Only do text matching if productIds didn't already narrow results
+      if (!action.payload.productIds || action.payload.productIds.length === 0 || filtered.length === state.allProducts.length) {
+        // Category filter
+        if (action.payload.category && action.payload.category !== 'All') {
+          filtered = filtered.filter(p => p.category === action.payload.category);
+        }
+        // Query — split into words and match ANY word against product fields
+        if (action.payload.query) {
+          const stopWords = new Set(['show', 'me', 'find', 'search', 'for', 'the', 'a', 'an', 'i', 'want', 'need', 'get', 'looking', 'browse', 'some', 'any', 'have', 'do', 'you', 'your', 'what', 'can', 'my', 'im', "i'm", 'am', 'please', 'help', 'with', 'of', 'in', 'on', 'to', 'is', 'it', 'that', 'this']);
+          const words = action.payload.query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2 && !stopWords.has(w));
+          if (words.length > 0) {
+            const wordFiltered = filtered.filter(p => {
+              const text = `${p.name} ${p.description} ${p.tags.join(' ')} ${p.category}`.toLowerCase();
+              return words.some((word: string) => text.includes(word));
+            });
+            // Only apply word filter if it produces results — never go blank
+            if (wordFiltered.length > 0) filtered = wordFiltered;
+          }
+        }
       }
+      // Safety net: never return an empty grid from a search action
+      if (filtered.length === 0) filtered = state.allProducts;
+      console.log('[FILTER] Final result count:', filtered.length);
       return { ...state, products: filtered };
     case 'SET_SORT_ORDER':
       let sorted = [...state.products];
@@ -250,13 +276,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
   const searchProducts = useCallback((query: string) => dispatch({ type: 'SEARCH_PRODUCTS', payload: query }), []);
   
-  const updateProductFilter = useCallback((filter: { category?: string; tag?: string; query?: string }) => {
+  const updateProductFilter = useCallback((filter: { category?: string; tag?: string; query?: string; productIds?: string[] }) => {
     if (filter.query) setActiveVibe(filter.query);
-    setIsCurating(true);
-    setTimeout(() => {
-      dispatch({ type: 'UPDATE_PRODUCT_FILTER', payload: filter });
-      setIsCurating(false);
-    }, 800);
+    else if (filter.productIds && filter.productIds.length > 0) setActiveVibe('curated selection');
+    // Dispatch immediately — no artificial delay that causes blank screens
+    dispatch({ type: 'UPDATE_PRODUCT_FILTER', payload: filter });
   }, []);
 
   const setSortOrder = useCallback((order: SortOrder) => dispatch({ type: 'SET_SORT_ORDER', payload: order }), []);

@@ -125,6 +125,7 @@ const ToastManager: React.FC = () => {
 
 const ProductGrid: React.FC = () => {
   const { products, currentCategory, activeVibe, isCurating, isInitialLoading, sortOrder, setSortOrder, resetArchive } = useStore();
+  console.log('[ProductGrid] render: products.length=', products.length, 'isInitialLoading=', isInitialLoading, 'isCurating=', isCurating);
 
   if (isInitialLoading) {
     return (
