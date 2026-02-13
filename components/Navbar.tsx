@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, Search, Menu, X, User, LogOut, Package, ChevronRight, UserCircle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 
 const Navbar: React.FC = () => {
   const { cart, toggleCart, filterByCategory, currentCategory, searchProducts } = useStore();
@@ -59,7 +59,7 @@ const Navbar: React.FC = () => {
             </button>
 
             <div className="flex-1 md:flex-none flex justify-center md:block">
-              <Link to="/" className="font-serif-elegant text-xl md:text-2xl font-bold tracking-[0.2em] text-black transition-opacity hover:opacity-70">
+              <Link to="/" className="font-serif-elegant text-xl md:text-2xl font-bold tracking-[0.2em] text-black dark:text-white transition-opacity hover:opacity-70">
                 MODERNIST
               </Link>
             </div>
@@ -93,6 +93,8 @@ const Navbar: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <ThemeToggle />
 
               <div className="relative">
                 {user ? (
