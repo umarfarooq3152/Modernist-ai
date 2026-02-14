@@ -57,6 +57,7 @@ const AIChatAgent: React.FC = () => {
   const [workingModel, setWorkingModel] = useState<string>(MODEL_FALLBACK_CHAIN[0]);
   const [conversationHistory, setConversationHistory] = useState<{ role: string; text: string }[]>([]);
   const [rudenessScore, setRudenessScore] = useState(0);
+  const [negotiationAttempts, setNegotiationAttempts] = useState(0);
   const [productEmbeddingsCache, setProductEmbeddingsCache] = useState<Map<string, number[]>>(new Map());
   const [embeddingModelStatus, setEmbeddingModelStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   
@@ -92,6 +93,12 @@ const AIChatAgent: React.FC = () => {
     } else {
       document.body.style.overflow = 'unset';
     }
+    
+    // Reset negotiation when chat is reopened
+    if (isOpen) {
+      setNegotiationAttempts(0);
+    }
+    
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
@@ -396,7 +403,7 @@ const AIChatAgent: React.FC = () => {
       type: 'function',
       function: {
         name: 'generate_coupon',
-        description: 'Generate a discount coupon. Use when user asks for a deal, discount, or gives a reason (birthday, student, loyal customer). Have a spine: if rude, refuse.',
+        description: 'Generate a discount coupon. CRITICAL: Only call this after 2-3 conversation turns where you probed for their reason and built rapport. DO NOT call on first discount request - ask probing questions first. If user is rude/demanding, call with negative discount (surcharge). Context required: negotiation_attempts count (if available) - only grant after multiple turns.',
         parameters: {
           type: 'object',
           properties: {
@@ -917,6 +924,13 @@ const AIChatAgent: React.FC = () => {
     const newRudenessScore = Math.min(5, rudenessScore + messageRudeness);
     setRudenessScore(messageRudeness > 0 ? newRudenessScore : Math.max(0, rudenessScore - 1));
 
+    // Track negotiation attempts (discount requests)
+    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) && 
+                              /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
+    if (isDiscountRequest) {
+      setNegotiationAttempts(prev => prev + 1);
+    }
+
     // ═══ TRY LOCAL INTENT ENGINE FIRST (no API call) ═══
     // Only for clear, unambiguous intents that don't need AI conversation
     const localResult = await handleLocalIntent(userMessage);
@@ -992,6 +1006,7 @@ CURRENT STATE:
 - CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price} × ${i.quantity})`).join(', ')}
 - CART TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%${negotiatedDiscount < 0 ? ' (SURCHARGE ACTIVE)' : ''}
 - RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply LUXURY TAX surcharge' : ''}
+- NEGOTIATION ATTEMPTS: ${negotiationAttempts} ${negotiationAttempts === 0 ? '(first discount request - ask probing questions, delay granting)' : negotiationAttempts === 1 ? '(second attempt - probe deeper, test commitment)' : negotiationAttempts >= 2 ? '(third+ attempt - if polite and serious, you may grant discount now)' : ''}
 - EMBEDDING STATUS: ${embeddingModelStatus}
 - PATRON: ${user?.email || 'Guest'}`,
       };
@@ -1179,6 +1194,7 @@ CURRENT STATE:
             if (couponResult.refused) {
               // Rudeness surcharge — injected as negative discount into cart session
               applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
+              setNegotiationAttempts(0); // Reset after surcharge
               setMessages(prev => [...prev, {
                 role: 'assistant',
                 text: couponResult.message,
@@ -1191,6 +1207,7 @@ CURRENT STATE:
             } else {
               // Success — inject coupon directly into cart session
               applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
+              setNegotiationAttempts(0); // Reset after successful discount
               setShowDiscountToast({ 
                 code: couponResult.couponCode, 
                 percent: couponResult.discountPercent, 
