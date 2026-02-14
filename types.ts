@@ -91,7 +91,7 @@ export type StoreAction =
   | { type: 'TOGGLE_SEARCH' }
   | { type: 'FILTER_BY_CATEGORY'; payload: string }
   | { type: 'SEARCH_PRODUCTS'; payload: string }
-  | { type: 'UPDATE_PRODUCT_FILTER'; payload: { category?: string; tag?: string; query?: string; productIds?: string[] } }
+  | { type: 'UPDATE_PRODUCT_FILTER'; payload: { category?: string; tag?: string; query?: string; productIds?: (string | number)[] } }
   | { type: 'SET_SORT_ORDER'; payload: SortOrder }
   | { type: 'APPLY_DISCOUNT'; payload: { couponCode: string; discountPercent: number } }
   | { type: 'SET_MOOD'; payload: UserMood }
