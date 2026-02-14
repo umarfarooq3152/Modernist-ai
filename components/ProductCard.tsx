@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, ArrowRight, Eye } from 'lucide-react';
+import { Plus, ArrowRight, Eye, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -12,6 +12,13 @@ interface ProductCardProps {
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { addToCart, setQuickViewProduct } = useStore();
   const [isHovered, setIsHovered] = useState(false);
+
+  // Calculate average rating
+  const averageRating = product.reviews && product.reviews.length > 0
+    ? product.reviews.reduce((sum, review) => sum + review.rating, 0) / product.reviews.length
+    : 0;
+  
+  const reviewCount = product.reviews?.length || 0;
 
   return (
     <div 
@@ -36,6 +43,26 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             isHovered ? 'opacity-100' : 'opacity-0'
           }`}
         >
+          {/* Rating Display on Hover */}
+          {reviewCount > 0 && (
+            <div className="pointer-events-none bg-white/95 backdrop-blur-md px-5 py-3 border border-black/10 flex items-center gap-3 transform translate-y-8 group-hover:translate-y-0 transition-all duration-500">
+              <div className="flex items-center gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    size={14}
+                    fill={i < Math.round(averageRating) ? "black" : "none"}
+                    strokeWidth={1}
+                    className={i < Math.round(averageRating) ? "text-black" : "text-gray-300"}
+                  />
+                ))}
+              </div>
+              <span className="text-[11px] font-black text-black">
+                {averageRating.toFixed(1)} ({reviewCount})
+              </span>
+            </div>
+          )}
+          
           <button 
             onClick={(e) => {
               e.preventDefault();
@@ -77,6 +104,26 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             {product.category}
           </span>
         </div>
+
+        {/* Rating Display - Always Visible */}
+        {reviewCount > 0 && (
+          <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-md px-3 py-2 border border-black/10 shadow-lg flex items-center gap-2">
+            <div className="flex items-center gap-0.5">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={11}
+                  fill={i < Math.round(averageRating) ? "black" : "none"}
+                  strokeWidth={1}
+                  className={i < Math.round(averageRating) ? "text-black" : "text-gray-300"}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] font-black text-black">
+              {averageRating.toFixed(1)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Product Information */}
@@ -86,6 +133,27 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1 hidden md:block" />
         </div>
         <p className="text-[10px] md:text-[11px] text-gray-400 uppercase tracking-widest font-medium line-clamp-1">{product.description}</p>
+        
+        {/* Rating Display */}
+        {reviewCount > 0 && (
+          <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-1">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={12}
+                  fill={i < Math.round(averageRating) ? "black" : "none"}
+                  strokeWidth={1}
+                  className={i < Math.round(averageRating) ? "text-black dark:text-white" : "text-gray-300 dark:text-gray-700"}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] font-black text-gray-600 dark:text-gray-400">
+              {averageRating.toFixed(1)} ({reviewCount})
+            </span>
+          </div>
+        )}
+        
         <div className="flex items-center justify-between pt-1">
           <p className="text-sm md:text-base font-black tracking-tight">${product.price.toLocaleString()}</p>
           <div className="flex gap-2">

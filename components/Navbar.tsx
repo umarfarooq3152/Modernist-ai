@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, Search, Menu, X, User, LogOut, Package, ChevronRight, UserCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
@@ -65,15 +66,15 @@ const Navbar: React.FC = () => {
             </div>
 
             <nav className="hidden md:flex items-center space-x-8">
-              {categories.slice(0, 5).map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => filterByCategory(cat)}
-                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'text-black' : 'text-gray-400 hover:text-black'
+                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'text-black dark:text-white' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'
                     }`}
                 >
                   {cat}
-                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-black transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-black dark:bg-white transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
                 </button>
               ))}
             </nav>
@@ -133,32 +134,78 @@ const Navbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Profile Dropdown */}
+      </header>
+
+      {/* Profile Dropdown - Portalled outside header to escape sticky/glass stacking context */}
+      <AnimatePresence>
         {user && isProfileOpen && (
           <>
-            <div className="fixed inset-0 z-[-1]" onClick={() => setIsProfileOpen(false)} />
-            <div className="absolute top-full right-4 md:right-8 mt-2 w-64 glass border border-black shadow-2xl p-6 animate-in fade-in slide-in-from-top-4 duration-300">
-              <div className="mb-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 truncate">{displayName}</p>
-                <p className="text-[8px] text-gray-400 uppercase tracking-widest mb-0 truncate">{user.email}</p>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[140] bg-black/5 backdrop-blur-[1px]"
+              onClick={() => setIsProfileOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="fixed top-[4.5rem] md:top-[6rem] right-4 md:right-8 w-72 bg-white/95 dark:bg-[#050505]/95 backdrop-blur-3xl border border-black/5 dark:border-white/10 shadow-[0_20px_40px_-5px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_-5px_rgba(0,0,0,1)] p-6 z-[150]"
+            >
+              <div className="mb-6 flex items-start justify-between border-b border-black/10 dark:border-white/10 pb-4">
+                <div>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-[0.2em] mb-2">Signed in as</p>
+                  <p className="text-sm font-serif-elegant font-bold text-black dark:text-white tracking-wide truncate max-w-[180px]">{displayName}</p>
+                  <p className="text-[9px] text-gray-600 dark:text-gray-300 tracking-widest mt-1 truncate max-w-[180px]">{user.email}</p>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-md">
+                  <span className="font-serif-elegant text-xs font-bold">{displayName.charAt(0)}</span>
+                </div>
               </div>
-              <div className="space-y-1 pt-4 border-t border-black/5">
-                <Link to="/profile" onClick={() => setIsProfileOpen(false)} className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-black py-2.5 hover:opacity-50 transition-opacity">
-                  <span className="flex items-center space-x-3"><UserCircle size={14} /> <span>Patron Profile</span></span>
-                  <ChevronRight size={12} />
+
+              <div className="space-y-1">
+                <Link
+                  to="/profile"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-sm text-black dark:text-gray-200"
+                >
+                  <span className="flex items-center gap-3">
+                    <UserCircle size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+                    <span>Patron Profile</span>
+                  </span>
+                  <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
                 </Link>
-                <Link to="/orders" onClick={() => setIsProfileOpen(false)} className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-black py-2.5 hover:opacity-50 transition-opacity">
-                  <span className="flex items-center space-x-3"><Package size={14} /> <span>Acquisitions</span></span>
-                  <ChevronRight size={12} />
+
+                <Link
+                  to="/orders"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-sm text-black dark:text-gray-200"
+                >
+                  <span className="flex items-center gap-3">
+                    <Package size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+                    <span>Acquisitions</span>
+                  </span>
+                  <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
                 </Link>
-                <button onClick={() => { logout(); setIsProfileOpen(false); }} className="w-full flex items-center space-x-3 text-[10px] uppercase tracking-widest font-black py-2.5 hover:opacity-50 transition-opacity text-left">
-                  <LogOut size={14} /> <span>End Session</span>
+
+                <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
+
+                <button
+                  onClick={() => { logout(); setIsProfileOpen(false); }}
+                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-sm text-red-600 dark:text-red-400 text-left"
+                >
+                  <span className="flex items-center gap-3">
+                    <LogOut size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+                    <span>End Session</span>
+                  </span>
                 </button>
               </div>
-            </div>
+            </motion.div>
           </>
         )}
-      </header>
+      </AnimatePresence>
 
       {/* MOBILE MENU - High Stack Glassmorphism Full-Screen Overlay */}
       <div className={`fixed inset-0 z-[150] bg-white/60 backdrop-blur-2xl transition-all duration-700 md:hidden flex flex-col ${isMobileMenuOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'}`}>

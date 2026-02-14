@@ -9,6 +9,7 @@ import ProductCard from './components/ProductCard';
 import CartSidebar from './components/CartSidebar';
 import AIChatAgent from './components/AIChatAgent';
 import AuthModal from './components/AuthModal';
+import HeroSlider from './components/HeroSlider';
 import ProductDetail from './pages/ProductDetail';
 import Checkout from './pages/Checkout';
 import OrderHistory from './pages/OrderHistory';
@@ -171,7 +172,7 @@ const ProductGrid: React.FC = () => {
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-8 md:py-20 page-reveal">
+    <div id="products-section" className="max-w-[1400px] mx-auto px-4 md:px-8 py-8 md:py-20 page-reveal">
       <div className="mb-12 md:mb-20 border-b border-black dark:border-white pb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-10">
         <div className="relative group flex-1">
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 dark:text-gray-500 font-bold mb-6">Archival Collection</p>
@@ -228,6 +229,15 @@ const ProductGrid: React.FC = () => {
         )}
       </div>
     </div>
+  );
+};
+
+const HomePage: React.FC = () => {
+  return (
+    <>
+      <HeroSlider />
+      <ProductGrid />
+    </>
   );
 };
 
@@ -293,7 +303,7 @@ const AppContent: React.FC = () => {
       {!isAdminPath && <Navbar />}
       <main className="flex-grow">
         <Routes>
-          <Route path="/" element={<ProductGrid />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders" element={<OrderHistory />} />

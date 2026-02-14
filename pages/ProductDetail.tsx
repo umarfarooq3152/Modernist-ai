@@ -23,6 +23,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
+import ReviewSubmission from '../components/ReviewSubmission';
 import Groq from 'groq-sdk';
 
 // Refined high-performance image component with archival loading state
@@ -59,7 +60,7 @@ const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { allProducts, addToCart, addToast } = useStore();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -68,6 +69,7 @@ const ProductDetail: React.FC = () => {
   const [zoomStyle, setZoomStyle] = useState<React.CSSProperties>({});
   const [clerkVerdict, setClerkVerdict] = useState<string | null>(null);
   const [isGeneratingVerdict, setIsGeneratingVerdict] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const fetchProductDetails = useCallback(async () => {
@@ -431,7 +433,16 @@ const ProductDetail: React.FC = () => {
                 Documented reviews from verified archival patrons. Every silhouette is held to our permanent standard.
               </p>
             </div>
-            <button className="w-full py-5 border border-black text-[10px] uppercase tracking-[0.4em] font-black hover:bg-black hover:text-white transition-all">
+            <button 
+              onClick={() => {
+                if (!user) {
+                  addToast('Please sign in to document your experience', 'info');
+                  return;
+                }
+                setIsReviewModalOpen(true);
+              }}
+              className="w-full py-5 border border-black text-[10px] uppercase tracking-[0.4em] font-black hover:bg-black hover:text-white transition-all"
+            >
               Document your experience
             </button>
           </div>
@@ -458,6 +469,16 @@ const ProductDetail: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* Review Submission Modal */}
+      {isReviewModalOpen && product && (
+        <ReviewSubmission
+          productId={product.id}
+          productName={product.name}
+          onClose={() => setIsReviewModalOpen(false)}
+          onSuccess={() => fetchProductDetails()}
+        />
+      )}
     </div>
   );
 };

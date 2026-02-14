@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo, useEffect, useState } from 'react';
 import { Product, CartItem, StoreState, StoreAction, UserMood, SortOrder, ClerkLog, OrderRecord, Review } from '../types';
+import { productsData } from '../data/products';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { searchInERP, fetchERPProducts, createInERP, syncFromN8N } from '../lib/actions/sync';
 
@@ -44,6 +46,7 @@ interface StoreContextValue extends StoreState {
   logClerkInteraction: (log: Partial<ClerkLog>) => Promise<void>;
   fetchUserOrders: (userId: string) => Promise<OrderRecord[]>;
   fetchUserReviews: (userId: string) => Promise<Review[]>;
+  submitReview: (productId: string, rating: number, text: string, userId: string, userName: string) => Promise<boolean>;
   toggleTheme: () => void;
   lockCart: () => void;
   unlockCart: () => void;
@@ -91,26 +94,26 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       };
     }
     case 'ADD_TO_CART_QUANTITY': {
-       const { product, quantity } = action.payload;
-       const existingItem = state.cart.find(item => item.product.id === product.id);
-       if (existingItem) {
-         return {
-           ...state,
-           cart: state.cart.map(item =>
-             item.product.id === product.id
-               ? { ...item, quantity: item.quantity + quantity }
-               : item
-           ),
-           lastAddedProduct: product,
-           isCartOpen: true,
-         };
-       }
-       return {
-         ...state,
-         cart: [...state.cart, { product, quantity }],
-         lastAddedProduct: product,
-         isCartOpen: true,
-       };
+      const { product, quantity } = action.payload;
+      const existingItem = state.cart.find(item => item.product.id === product.id);
+      if (existingItem) {
+        return {
+          ...state,
+          cart: state.cart.map(item =>
+            item.product.id === product.id
+              ? { ...item, quantity: item.quantity + quantity }
+              : item
+          ),
+          lastAddedProduct: product,
+          isCartOpen: true,
+        };
+      }
+      return {
+        ...state,
+        cart: [...state.cart, { product, quantity }],
+        lastAddedProduct: product,
+        isCartOpen: true,
+      };
     }
     case 'REMOVE_FROM_CART':
       return {
@@ -231,12 +234,52 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const fetchProducts = async () => {
       setIsInitialLoading(true);
       try {
-        const { data, error } = await supabase.from('products').select('*');
-        if (data && !error && data.length > 0) {
-          dispatch({ type: 'SET_PRODUCTS', payload: data as Product[] });
+        // ENTERPRISE FIX: Use a dedicated anonymous client to bypass authenticated RLS policies
+        // This ensures public data is ALWAYS fetched as 'public', avoiding recursion/deadlocks.
+        const d_url = 'https://nqtmajhemeafigwrbyay.supabase.co';
+        const d_key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xdG1hamhlbWVhZmlnd3JieWF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5NzA4OTAsImV4cCI6MjA4NjU0Njg5MH0.AP1b2xREgVqIOf2pgDIhyIZQafudQuyv7xBrprhd2pc';
+        const anonClient = createClient(d_url, d_key, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        });
+
+        // Race against 5s timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timeout')), 5000)
+        );
+
+        const [productsResult, reviewsResult] = await Promise.race([
+          Promise.all([
+            anonClient.from('products').select('*'),
+            anonClient.from('reviews').select('*')
+          ]),
+          timeoutPromise
+        ]) as any;
+
+        const { data: productsData, error: productsError } = productsResult;
+        const { data: reviewsData, error: reviewsError } = reviewsResult;
+
+        if (productsData && !productsError && productsData.length > 0) {
+          // Create a map of reviews by product_id
+          const reviewsByProduct = new Map<string, Review[]>();
+          if (reviewsData && !reviewsError) {
+            reviewsData.forEach((review: Review) => {
+              if (!reviewsByProduct.has(review.product_id)) {
+                reviewsByProduct.set(review.product_id, []);
+              }
+              reviewsByProduct.get(review.product_id)!.push(review);
+            });
+          }
+
+          // Attach reviews to products
+          const productsWithReviews = productsData.map((product: Product) => ({
+            ...product,
+            reviews: reviewsByProduct.get(product.id) || []
+          }));
+
+          dispatch({ type: 'SET_PRODUCTS', payload: productsWithReviews });
         }
       } catch (e) {
-        console.error("Supabase load failed, falling back to local data", e);
+        console.error("Supabase load failed (or timed out), falling back to local data", e);
       } finally {
         setIsInitialLoading(false);
       }
@@ -270,7 +313,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     dispatch({ type: 'FILTER_BY_CATEGORY', payload: category });
   }, []);
   const searchProducts = useCallback((query: string) => dispatch({ type: 'SEARCH_PRODUCTS', payload: query }), []);
-  
+
   const updateProductFilter = useCallback((filter: { category?: string; tag?: string; query?: string; productIds?: string[] }) => {
     if (filter.query) setActiveVibe(filter.query);
     else if (filter.productIds && filter.productIds.length > 0) setActiveVibe('curated selection');
@@ -282,13 +325,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const setMood = useCallback((mood: UserMood) => dispatch({ type: 'SET_MOOD', payload: mood }), []);
   const clearCart = useCallback(() => dispatch({ type: 'CLEAR_CART' }), []);
   const clearLastAdded = useCallback(() => dispatch({ type: 'CLEAR_LAST_ADDED' }), []);
-  
+
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString();
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
-  
+
   const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
   const resetArchive = useCallback(() => {
     setActiveVibe(null);
@@ -371,27 +414,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
-      
+
       if (checkoutsError) {
         console.error('Failed to fetch orders:', checkoutsError);
         return [];
       }
-      
+
       if (!checkouts || checkouts.length === 0) {
         return [];
       }
-      
+
       // Fetch items for all orders
       const orderIds = checkouts.map(c => c.id);
       const { data: items, error: itemsError } = await supabase
         .from('checkout_items')
         .select('*')
         .in('order_id', orderIds);
-      
+
       if (itemsError) {
         console.error('Failed to fetch order items:', itemsError);
       }
-      
+
       // Group items by order_id
       const itemsByOrderId: Record<string, any[]> = {};
       (items || []).forEach(item => {
@@ -406,7 +449,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           image_url: item.image_url || ''
         });
       });
-      
+
       // Combine checkouts with their items
       const orders: OrderRecord[] = checkouts.map(checkout => ({
         id: checkout.id.toString(),
@@ -416,7 +459,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         status: checkout.status || 'pending',
         items: itemsByOrderId[checkout.id] || []
       }));
-      
+
       return orders;
     } catch (e) {
       console.error('Error fetching user orders:', e);
@@ -432,47 +475,75 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .select('*')
         .eq('user_id', userId)
         .order('date', { ascending: false });
-      
+
       if (error) {
         console.error('Failed to fetch reviews:', error);
         return [];
       }
-      
+
       if (!reviewsData || reviewsData.length === 0) {
         return [];
       }
-      
+
       // Get product IDs to fetch product details
       const productIds = reviewsData.map(r => r.product_id).filter(Boolean);
-      
+
       if (productIds.length === 0) {
         return reviewsData;
       }
-      
+
       // Fetch product details
       const { data: productsData } = await supabase
         .from('products')
         .select('id, name, image_url')
         .in('id', productIds);
-      
+
       // Create a map of products
       const productsMap = new Map();
       (productsData || []).forEach(p => {
         productsMap.set(p.id, p);
       });
-      
+
       // Combine reviews with product data
       const reviews = reviewsData.map(review => ({
         ...review,
         product: productsMap.get(review.product_id) || null
       }));
-      
+
       return reviews;
     } catch (e) {
       console.error('Error fetching user reviews:', e);
       return [];
     }
   }, []);
+
+  const submitReview = useCallback(async (productId: string, rating: number, text: string, userId: string, userName: string) => {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .insert({
+          product_id: productId,
+          user_id: userId,
+          author: userName,
+          rating: rating,
+          text: text,
+          date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        });
+
+      if (error) {
+        console.error('Failed to submit review:', error);
+        addToast('Failed to submit review', 'error');
+        return false;
+      }
+
+      addToast('Review submitted successfully', 'success');
+      return true;
+    } catch (e) {
+      console.error('Error submitting review:', e);
+      addToast('Failed to submit review', 'error');
+      return false;
+    }
+  }, [addToast]);
 
   const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
   const lockCart = useCallback(() => dispatch({ type: 'LOCK_CART' }), []);
@@ -483,8 +554,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
-    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, toggleTheme,
-    lockCart, unlockCart
+    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, toggleTheme
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
