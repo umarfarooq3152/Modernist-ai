@@ -6,9 +6,11 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import Groq from 'groq-sdk';
 import { Product } from '../types';
+import { getStripe } from '../lib/stripe';
 import { getLocalEmbedding, cosineSimilarity, isEmbeddingModelReady } from '../lib/embeddings';
 import { CLERK_SYSTEM_PROMPT } from '../lib/clerkSystemPrompt';
 import { generateProductEmbeddings } from '../lib/ragSearch';
+import { handleGenerateCouponToolCall, type CouponResult } from '../lib/ragIntegration';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -611,7 +613,7 @@ const AIChatAgent: React.FC = () => {
       type: 'function',
       function: {
         name: 'search_inventory',
-        description: 'PRODUCTION-GRADE HYBRID SEARCH (BM25 + Vector Embeddings + RRF Fusion). Use for ANY product search request: "show me summer dresses", "leather jacket under $500", "minimalist watches", "blue shoes". Returns rich product cards with images, prices, reviews.',
+        description: 'PRODUCTION-GRADE HYBRID SEARCH (BM25 + Vector Embeddings + RRF Fusion). Use for ANY product search request: "show me summer dresses", "leather jacket under $500", "minimalist watches", "blue shoes". ⛔ DO NOT CALL when user is responding to discount negotiation questions (e.g., "first purchase", "birthday", "50% off") - those are answers to YOUR questions, not product searches. Returns rich product cards with images, prices, reviews.',
         parameters: {
           type: 'object',
           properties: {
@@ -773,11 +775,27 @@ const AIChatAgent: React.FC = () => {
 
   const findProductByName = (input: string): Product | undefined => {
     const q = input.toLowerCase();
-    return allProducts.find(p => 
-      q.includes(p.name.toLowerCase()) || 
-      p.name.toLowerCase().includes(q) ||
-      p.id === q
-    );
+    // More fuzzy matching for product search
+    return allProducts.find(p => {
+      const name = p.name.toLowerCase();
+      const words = q.split(/\s+/).filter(w => w.length > 2);
+      
+      // Exact match or contains
+      if (q.includes(name) || name.includes(q) || p.id === q) return true;
+      
+      // Fuzzy word matching - at least one significant word must match
+      const nameWords = name.split(/\s+/).filter(w => w.length > 2);
+      return words.some(word => 
+        nameWords.some(nameWord => 
+          nameWord.includes(word) || word.includes(nameWord) ||
+          // Category/type matching
+          (word === 'watch' && (nameWord.includes('chronograph') || nameWord.includes('tourbillon'))) ||
+          (word === 'ring' && nameWord.includes('band')) ||
+          (word === 'bracelet' && (nameWord.includes('chain') || nameWord.includes('bead'))) ||
+          (word === 'necklace' && nameWord.includes('pendant'))
+        )
+      );
+    });
   };
 
   const handleLocalIntent = async (msg: string): Promise<IntentResult> => {
@@ -832,8 +850,10 @@ const AIChatAgent: React.FC = () => {
       return { handled: true, intent: 'show_cart' };
     }
 
-    // Checkout
-    if (/\b(checkout|check out|buy now|purchase|complete.*(order|purchase)|pay)\b/i.test(m)) {
+    // Checkout (but NOT during negotiation context)
+    // Avoid triggering on responses like "first purchase" during discount negotiation
+    const isNegotiationContext = /\b(discount|deal|coupon|cheaper|price|birthday|student)\b/i.test(messages.slice(-3).map(m => m.text).join(' '));
+    if (/\b(checkout|check out|buy now|complete.*(order|purchase)|ready to pay|proceed to payment)\b/i.test(m) && !isNegotiationContext) {
       if (cart.length === 0) {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty. Let me find you something first." }]);
       } else {
@@ -1120,8 +1140,8 @@ const AIChatAgent: React.FC = () => {
     //   - Attempt 1 → 2: Second request, AI probes deeper, tests commitment  
     //   - Attempt 2+: Third+ request, AI may now grant discount via generate_coupon tool
     // Track negotiation attempts (discount requests)
-    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) && 
-                              /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
+    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion|\d+%|\d+\s*percent)/i.test(userMessage) && 
+                              /\b(discount|deal|off|coupon|cheaper|price|birthday|student|%|percent)\b/i.test(userMessage);
     const currentNegotiationAttempts = isDiscountRequest ? negotiationAttempts + 1 : negotiationAttempts;
     if (isDiscountRequest) {
       console.log('[NEGOTIATION] Discount request detected in message:', userMessage);
@@ -1207,11 +1227,13 @@ CURRENT STATE:
 - CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price} × ${i.quantity})`).join(', ')}
 - CART TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%${negotiatedDiscount < 0 ? ' (SURCHARGE ACTIVE)' : ''}
 - RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply LUXURY TAX surcharge via generate_coupon with negative %' : ''}
-- NEGOTIATION ATTEMPTS: ${currentNegotiationAttempts}/2 ${currentNegotiationAttempts === 0 ? '🚫 ZERO ATTEMPTS - This is their FIRST discount request. DO NOT call generate_coupon. Ask probing questions ONLY.' : currentNegotiationAttempts === 1 ? '🚫 ONE ATTEMPT - This is their SECOND discount request. STILL DO NOT call generate_coupon. Probe deeper, test commitment.' : '✅ TWO+ ATTEMPTS - You may NOW call generate_coupon if they truly deserve it.'}
+- NEGOTIATION ATTEMPTS: ${currentNegotiationAttempts}/2 ${currentNegotiationAttempts === 0 ? '🚫 ZERO ATTEMPTS - This is their FIRST discount request. DO NOT call ANY tools except conversational response. Ask probing questions ONLY.' : currentNegotiationAttempts === 1 ? '🚫 ONE ATTEMPT - This is their SECOND discount request. DO NOT call ANY tools except conversational response. Probe deeper, test commitment.' : '✅ TWO+ ATTEMPTS - You may NOW call generate_coupon if they truly deserve it.'}
 - EMBEDDING STATUS: ${embeddingModelStatus}
 - PATRON: ${user?.email || 'Guest'}
 
-🚫 CRITICAL REMINDER: You are on attempt ${currentNegotiationAttempts}. ${currentNegotiationAttempts < 2 ? 'DO NOT call generate_coupon tool yet. DO NOT mention specific discount percentages in your response. Only ask questions and build rapport.' : 'You may now consider calling generate_coupon if warranted.'}`,
+🚨 NEGOTIATION MODE: ${currentNegotiationAttempts > 0 ? `ACTIVE (attempt ${currentNegotiationAttempts}) - You are in the middle of discount negotiation. DO NOT call search_inventory, update_ui, add_to_cart, or any other tools. ONLY respond conversationally to continue the negotiation flow. The user is answering YOUR previous questions about their discount request.` : 'INACTIVE'}
+
+🚫 CRITICAL REMINDER: You are on attempt ${currentNegotiationAttempts}. ${currentNegotiationAttempts < 2 ? 'DO NOT call ANY tools during negotiation. Only respond with text to ask questions and build rapport about their purchase. When they answer "birthday", "celebration with friends", etc. - these are answers to YOUR questions, not product searches!' : 'You may now consider calling generate_coupon if warranted.'}`,
       };
 
       const chatMessages: Groq.Chat.ChatCompletionMessageParam[] = [
@@ -1237,7 +1259,23 @@ CURRENT STATE:
       // Handle tool calls from Groq
       if (message?.tool_calls && message.tool_calls.length > 0) {
         console.log('[TOOL_CALLS] AI returned', message.tool_calls.length, 'tool calls:', message.tool_calls.map(t => t.function.name).join(', '));
-        for (const toolCall of message.tool_calls) {
+        
+        // 🚨 NEGOTIATION GUARD: Block ALL tool calls during active negotiation (except generate_coupon when allowed)
+        if (currentNegotiationAttempts > 0 && currentNegotiationAttempts < 2) {
+          console.warn('[NEGOTIATION_GUARD] Blocking tool calls during active negotiation. Attempt:', currentNegotiationAttempts);
+          const negotiationResponses = [
+            currentNegotiationAttempts === 1 ? "I hear you, but I need to understand more. What makes this purchase special to you?" : "Okay, I'm warming up to this idea. Are you committed to purchasing today, or just exploring options?"
+          ];
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            text: negotiationResponses[0]
+          }]);
+          didShowSomething = true;
+          negotiationBlocked = true;
+          // Don't process any tool calls - force conversational response
+        } else {
+          // Normal tool processing
+          for (const toolCall of message.tool_calls) {
           const fnName = toolCall.function.name;
           let args: any = {};
           try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch(e) {}
@@ -1275,13 +1313,13 @@ CURRENT STATE:
               
               setMessages(prev => [...prev, {
                 role: 'assistant',
-                text: ragResult.assistantMessage,
-                products: ragResult.products.slice(0, 3) // Show top 3 in chat
+                text: searchResponses[Math.floor(Math.random() * searchResponses.length)],
+                products: products.slice(0, 3) // Show top 3 in chat
               }]);
               // UI INTEGRATION: Update the product grid immediately
-              if (ragResult.products.length > 0) {
-                updateProductFilter({ query: args.query, category: args.category, productIds: ragResult.products.map((p: Product) => p.id) });
-                addToast(`Showing ${ragResult.products.length} results for "${args.query}"`, 'success');
+              if (products.length > 0) {
+                updateProductFilter({ query: args.query, category: args.category, productIds: products.map((p: Product) => p.id) });
+                addToast(`Showing ${products.length} results for "${args.query}"`, 'success');
               }
             }
             didShowSomething = true;
@@ -1431,10 +1469,12 @@ CURRENT STATE:
                 ];
               }
               
+              const probingText = probingResponses[Math.floor(Math.random() * probingResponses.length)];
               setMessages(prev => [...prev, { 
                 role: 'assistant', 
-                text: probingResponses[Math.floor(Math.random() * probingResponses.length)] 
+                text: probingText
               }]);
+              finalClerkResponse = probingText; // Capture for conversation history
               didShowSomething = true;
               negotiationBlocked = true; // Prevent AI text response from overriding this
               continue; // Skip coupon generation entirely
@@ -1495,7 +1535,7 @@ CURRENT STATE:
                   reason: couponResult.reason 
                 }
               }]);
-              addToast(`${percent}% discount applied: ${code}`, 'success');
+              addToast(`${couponResult.discountPercent}% discount applied: ${couponResult.couponCode}`, 'success');
             }
             didShowSomething = true;
           } else if (fnName === 'recommend_products') {
@@ -1534,6 +1574,7 @@ CURRENT STATE:
               didShowSomething = true;
             }
           }
+        }
         }
       }
 
@@ -1584,10 +1625,18 @@ CURRENT STATE:
         setMessages(prev => [...prev, { role: 'assistant', text: fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)] }]);
       }
 
-      setConversationHistory(prev => [...prev.slice(-8),
-        { role: 'user', text: userMessage },
-        { role: 'assistant', text: finalClerkResponse || '(showed products)' }
-      ]);
+      setConversationHistory(prev => {
+        const lastAssistantMsg = messages[messages.length - 1]?.role === 'assistant' 
+          ? messages[messages.length - 1].text 
+          : finalClerkResponse || '(action performed)';
+        
+        return [...prev.slice(-8),
+          { role: 'user', text: userMessage },
+          { role: 'assistant', text: lastAssistantMsg }
+        ];
+      });
+      
+      console.log('[CONVERSATION_HISTORY] Updated. Current length:', conversationHistory.length + 2);
 
     } catch (error: any) {
       console.error("Clerk error:", error);
@@ -1680,14 +1729,23 @@ CURRENT STATE:
     if (cart.length === 0) return;
     setIsRedirecting(true);
     try {
-      const mockRequest = {
-        method: 'POST',
-        json: async () => ({ cartItems: cart, negotiatedTotal: cartTotal, discountPercent: negotiatedDiscount })
-      };
-      const response = await checkoutHandler(mockRequest as any);
-      const { sessionId } = await response.json();
-      const stripe = getStripe();
-      await stripe.redirectToCheckout({ sessionId });
+      // Mock checkout for demo purposes - replace with actual Stripe implementation
+      console.log('[CHECKOUT] Mock checkout initiated:', { 
+        cartItems: cart, 
+        total: cartTotal, 
+        discount: negotiatedDiscount 
+      });
+      // In a real app, you would call your API here:
+      // const response = await fetch('/api/checkout', { ... });
+      // const { sessionId } = await response.json();
+      // const stripe = getStripe();
+      // await stripe.redirectToCheckout({ sessionId });
+      
+      // For demo, just simulate checkout
+      setTimeout(() => {
+        alert(`Mock checkout completed! Total: $${cartTotal}`);
+        setIsRedirecting(false);
+      }, 2000);
     } catch (err) {
       console.error(err);
       setIsRedirecting(false);
