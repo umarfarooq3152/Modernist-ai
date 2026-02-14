@@ -40,7 +40,7 @@ class BM25Ranker {
   private avgDocLength = 0;
   private idf: Map<string, number> = new Map();
   private docFrequencies: Map<string, number> = new Map();
-  
+
   constructor(private documents: { id: string; text: string }[]) {
     this.buildIndex();
   }
@@ -61,7 +61,7 @@ class BM25Ranker {
     this.documents.forEach(doc => {
       const tokens = this.tokenize(doc.text);
       docLengths.push(tokens.length);
-      
+
       const uniqueTokens = new Set(tokens);
       uniqueTokens.forEach(token => {
         if (!termDocCounts.has(token)) {
@@ -89,7 +89,7 @@ class BM25Ranker {
     this.documents.forEach(doc => {
       const docTokens = this.tokenize(doc.text);
       const docLength = docTokens.length;
-      
+
       // Count term frequencies
       const termFreqs = new Map<string, number>();
       docTokens.forEach(token => {
@@ -100,11 +100,11 @@ class BM25Ranker {
       queryTokens.forEach(token => {
         const tf = termFreqs.get(token) || 0;
         const idf = this.idf.get(token) || 0;
-        
+
         // BM25 formula
         const numerator = tf * (this.k1 + 1);
         const denominator = tf + this.k1 * (1 - this.b + this.b * (docLength / this.avgDocLength));
-        
+
         score += idf * (numerator / denominator);
       });
 
@@ -192,7 +192,7 @@ const AIChatAgent: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isRetrieving, setIsRetrieving] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [showDiscountToast, setShowDiscountToast] = useState<{code: string, percent: number, reason: string} | null>(null);
+  const [showDiscountToast, setShowDiscountToast] = useState<{ code: string, percent: number, reason: string } | null>(null);
   const [userSelfie, setUserSelfie] = useState<string | null>(null);
   const [isProcessingTryOn, setIsProcessingTryOn] = useState(false);
   const [workingModel, setWorkingModel] = useState<string>(MODEL_FALLBACK_CHAIN[0]);
@@ -202,32 +202,32 @@ const AIChatAgent: React.FC = () => {
   const [productEmbeddingsCache, setProductEmbeddingsCache] = useState<Map<string, number[]>>(new Map());
   const [embeddingModelStatus, setEmbeddingModelStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [bm25Index, setBm25Index] = useState<BM25Ranker | null>(null);
-  
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const { 
+
+  const {
     allProducts, cart, addToCartWithQuantity, openCart, lastAddedProduct, clearLastAdded,
-    updateProductFilter, applyNegotiatedDiscount, negotiatedDiscount, cartTotal, cartSubtotal, addToast, 
+    updateProductFilter, applyNegotiatedDiscount, negotiatedDiscount, appliedCoupon, cartTotal, cartSubtotal, addToast,
     logClerkInteraction, setSortOrder, removeFromCart, filterByCategory, toggleTheme, theme
   } = useStore();
 
   const { user } = useAuth();
-  
+
   // ══════════════════════════════════════════════════════════════
   // RAG INITIALIZATION - Build Hybrid Search Indexes
   // ══════════════════════════════════════════════════════════════
-  
+
   useEffect(() => {
     if (!isOpen || productEmbeddingsCache.size > 0) return;
-    
+
     const initializeRAG = async () => {
       console.log('[RAG] Initializing hybrid search system...');
       const startTime = Date.now();
-      
+
       try {
         setEmbeddingModelStatus('loading');
-        
+
         // STAGE 1: Build BM25 Index (keyword search)
         console.log('[RAG] Building BM25 keyword index...');
         const bm25Docs = allProducts.map(p => ({
@@ -237,17 +237,17 @@ const AIChatAgent: React.FC = () => {
         const bm25 = new BM25Ranker(bm25Docs);
         setBm25Index(bm25);
         console.log(`[RAG] ✓ BM25 index built: ${allProducts.length} products`);
-        
+
         // STAGE 2: Generate Vector Embeddings (semantic search)
         console.log('[RAG] Generating vector embeddings...');
         const cache = await generateProductEmbeddings(allProducts);
         setProductEmbeddingsCache(cache);
         console.log(`[RAG] ✓ Vector embeddings cached: ${cache.size} products`);
-        
+
         setEmbeddingModelStatus('ready');
         const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
         console.log(`[RAG] ✅ Hybrid search ready in ${elapsedTime}s`);
-        
+
         addToast('AI search engine initialized', 'success');
       } catch (err) {
         console.error('[RAG] Initialization failed:', err);
@@ -255,14 +255,14 @@ const AIChatAgent: React.FC = () => {
         addToast('Search engine degraded mode', 'warning');
       }
     };
-    
+
     initializeRAG();
   }, [isOpen, allProducts]);
 
   // ══════════════════════════════════════════════════════════════
   // HYBRID SEARCH FUNCTION - THE CORE RAG RETRIEVAL
   // ══════════════════════════════════════════════════════════════
-  
+
   const hybridSearch = async (
     query: string,
     options: {
@@ -282,17 +282,17 @@ const AIChatAgent: React.FC = () => {
   }> => {
     const startTime = Date.now();
     const { category, minPrice, maxPrice, maxResults = 10 } = options;
-    
+
     try {
       console.log(`[HYBRID SEARCH] Query: "${query}"`);
-      
+
       // STAGE 1: BM25 Keyword Search (fast exact matching)
       let keywordResults: { id: string; score: number }[] = [];
       if (bm25Index) {
         keywordResults = bm25Index.search(query, maxResults * 2);
         console.log(`[BM25] Found ${keywordResults.length} keyword matches`);
       }
-      
+
       // STAGE 2: Vector Semantic Search (meaning-based)
       let vectorResults: { id: string; score: number }[] = [];
       if (embeddingModelStatus === 'ready' && productEmbeddingsCache.size > 0) {
@@ -308,7 +308,7 @@ const AIChatAgent: React.FC = () => {
               .filter(ps => ps.score >= 0.3) // Similarity threshold
               .sort((a, b) => b.score - a.score)
               .slice(0, maxResults * 2);
-            
+
             vectorResults = productScores;
             console.log(`[VECTOR] Found ${vectorResults.length} semantic matches`);
           }
@@ -316,11 +316,11 @@ const AIChatAgent: React.FC = () => {
           console.warn('[VECTOR] Embedding generation failed:', embErr);
         }
       }
-      
+
       // STAGE 3: Reciprocal Rank Fusion (merge results)
       let fusedResults: { id: string; score: number }[] = [];
       let method: 'hybrid' | 'vector' | 'keyword' | 'fallback' = 'fallback';
-      
+
       if (vectorResults.length > 0 && keywordResults.length > 0) {
         fusedResults = reciprocalRankFusion(vectorResults, keywordResults);
         method = 'hybrid';
@@ -344,32 +344,32 @@ const AIChatAgent: React.FC = () => {
         fusedResults = fallbackProducts.map((p, i) => ({ id: p.id, score: 1 / (i + 1) }));
         method = 'fallback';
       }
-      
+
       // STAGE 4: Apply Metadata Filters (price, category)
       let filteredProducts = fusedResults
         .map(r => allProducts.find(p => p.id === r.id))
         .filter((p): p is Product => p !== undefined);
-      
+
       if (category && category !== 'All') {
-        filteredProducts = filteredProducts.filter(p => 
+        filteredProducts = filteredProducts.filter(p =>
           p.category.toLowerCase() === category.toLowerCase()
         );
       }
-      
+
       if (minPrice !== undefined) {
         filteredProducts = filteredProducts.filter(p => p.price >= minPrice);
       }
-      
+
       if (maxPrice !== undefined) {
         filteredProducts = filteredProducts.filter(p => p.price <= maxPrice);
       }
-      
+
       // STAGE 5: Return top results
       const finalProducts = filteredProducts.slice(0, maxResults);
       const searchTime = Date.now() - startTime;
-      
+
       console.log(`[HYBRID SEARCH] ✓ Returned ${finalProducts.length} products in ${searchTime}ms (${method})`);
-      
+
       return {
         products: finalProducts,
         metadata: {
@@ -379,11 +379,11 @@ const AIChatAgent: React.FC = () => {
           keywordMatches: keywordResults.length,
         }
       };
-      
+
     } catch (error) {
       console.error('[HYBRID SEARCH] Error:', error);
       const searchTime = Date.now() - startTime;
-      
+
       // Emergency fallback
       const emergencyResults = allProducts
         .filter(p => {
@@ -391,7 +391,7 @@ const AIChatAgent: React.FC = () => {
           return text.includes(query.toLowerCase());
         })
         .slice(0, maxResults);
-      
+
       return {
         products: emergencyResults,
         metadata: {
@@ -407,7 +407,7 @@ const AIChatAgent: React.FC = () => {
   // ══════════════════════════════════════════════════════════════
   // AUTO-SCROLL
   // ══════════════════════════════════════════════════════════════
-  
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -417,7 +417,7 @@ const AIChatAgent: React.FC = () => {
   // ══════════════════════════════════════════════════════════════
   // PERFECT PAIR RECOMMENDATIONS
   // ══════════════════════════════════════════════════════════════
-  
+
   useEffect(() => {
     if (lastAddedProduct && isOpen && messages.length > 0) {
       triggerPerfectPairRecommendation(lastAddedProduct);
@@ -433,12 +433,12 @@ const AIChatAgent: React.FC = () => {
     } else {
       document.body.style.overflow = 'unset';
     }
-    
+
     // Reset negotiation when chat is reopened
     if (isOpen) {
       setNegotiationAttempts(0);
     }
-    
+
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
@@ -712,59 +712,59 @@ const AIChatAgent: React.FC = () => {
 
   const semanticSearch = (query: string, category?: string): Product[] => {
     try {
-    const q = query.toLowerCase();
-    
-    // Keyword expansion map for vibe-based search
-    const vibeMap: Record<string, string[]> = {
-      summer: ['summer', 'linen', 'light', 'breathable', 'relaxed', 'casual'],
-      wedding: ['formal', 'elegant', 'essential', 'classic', 'smart', 'evening'],
-      winter: ['winter', 'wool', 'down', 'warm', 'shearling', 'outerwear'],
-      office: ['office', 'formal', 'tailoring', 'smart', 'classic', 'staple'],
-      casual: ['casual', 'relaxed', 'staple', 'heritage', 'rugged'],
-      luxury: ['luxury', 'premium', 'leather', 'cashmere', 'statement', 'large'],
-      minimalist: ['minimalist', 'modern', 'essential', 'functional', 'art'],
-      gift: ['gift', 'accessory', 'jewelry', 'color', 'art', 'functional'],
-      travel: ['travel', 'leather', 'functional', 'performance', 'technical'],
-      evening: ['evening', 'smart', 'formal', 'elegant', 'jewelry'],
-      italy: ['summer', 'linen', 'light', 'relaxed', 'casual', 'classic', 'smart'],
-    };
+      const q = query.toLowerCase();
 
-    // Expand query with vibe keywords
-    let searchTerms = q.split(/\s+/).filter(w => w.length > 2);
-    for (const [vibe, extra] of Object.entries(vibeMap)) {
-      if (q.includes(vibe)) searchTerms = [...searchTerms, ...extra];
-    }
-    searchTerms = [...new Set(searchTerms)];
+      // Keyword expansion map for vibe-based search
+      const vibeMap: Record<string, string[]> = {
+        summer: ['summer', 'linen', 'light', 'breathable', 'relaxed', 'casual'],
+        wedding: ['formal', 'elegant', 'essential', 'classic', 'smart', 'evening'],
+        winter: ['winter', 'wool', 'down', 'warm', 'shearling', 'outerwear'],
+        office: ['office', 'formal', 'tailoring', 'smart', 'classic', 'staple'],
+        casual: ['casual', 'relaxed', 'staple', 'heritage', 'rugged'],
+        luxury: ['luxury', 'premium', 'leather', 'cashmere', 'statement', 'large'],
+        minimalist: ['minimalist', 'modern', 'essential', 'functional', 'art'],
+        gift: ['gift', 'accessory', 'jewelry', 'color', 'art', 'functional'],
+        travel: ['travel', 'leather', 'functional', 'performance', 'technical'],
+        evening: ['evening', 'smart', 'formal', 'elegant', 'jewelry'],
+        italy: ['summer', 'linen', 'light', 'relaxed', 'casual', 'classic', 'smart'],
+      };
 
-    let results = allProducts.filter(p => {
-      const matchesCategory = !category || category === 'All' || (p.category || '').toLowerCase() === category.toLowerCase();
-      if (!matchesCategory) return false;
-      
-      const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
-      return searchTerms.some(term => text.includes(term));
-    });
+      // Expand query with vibe keywords
+      let searchTerms = q.split(/\s+/).filter(w => w.length > 2);
+      for (const [vibe, extra] of Object.entries(vibeMap)) {
+        if (q.includes(vibe)) searchTerms = [...searchTerms, ...extra];
+      }
+      searchTerms = [...new Set(searchTerms)];
 
-    // Price filtering
-    const priceMatch = q.match(/under\s*\$?(\d+)/i);
-    if (priceMatch) {
-      const maxPrice = parseInt(priceMatch[1]);
-      results = (results.length > 0 ? results : allProducts).filter(p => p.price <= maxPrice);
-    }
-    const overMatch = q.match(/over\s*\$?(\d+)/i);
-    if (overMatch) {
-      const minPrice = parseInt(overMatch[1]);
-      results = (results.length > 0 ? results : allProducts).filter(p => p.price >= minPrice);
-    }
+      let results = allProducts.filter(p => {
+        const matchesCategory = !category || category === 'All' || (p.category || '').toLowerCase() === category.toLowerCase();
+        if (!matchesCategory) return false;
 
-    // If nothing matched, try individual word matching against all products
-    if (results.length === 0) {
-      results = allProducts.filter(p => {
         const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
-        return searchTerms.some(t => text.includes(t));
+        return searchTerms.some(term => text.includes(term));
       });
-    }
-    
-    return results;
+
+      // Price filtering
+      const priceMatch = q.match(/under\s*\$?(\d+)/i);
+      if (priceMatch) {
+        const maxPrice = parseInt(priceMatch[1]);
+        results = (results.length > 0 ? results : allProducts).filter(p => p.price <= maxPrice);
+      }
+      const overMatch = q.match(/over\s*\$?(\d+)/i);
+      if (overMatch) {
+        const minPrice = parseInt(overMatch[1]);
+        results = (results.length > 0 ? results : allProducts).filter(p => p.price >= minPrice);
+      }
+
+      // If nothing matched, try individual word matching against all products
+      if (results.length === 0) {
+        results = allProducts.filter(p => {
+          const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
+          return searchTerms.some(t => text.includes(t));
+        });
+      }
+
+      return results;
     } catch (e) {
       console.error('[semanticSearch] crashed:', e);
       return [];
@@ -773,8 +773,8 @@ const AIChatAgent: React.FC = () => {
 
   const findProductByName = (input: string): Product | undefined => {
     const q = input.toLowerCase();
-    return allProducts.find(p => 
-      q.includes(p.name.toLowerCase()) || 
+    return allProducts.find(p =>
+      q.includes(p.name.toLowerCase()) ||
       p.name.toLowerCase().includes(q) ||
       p.id === q
     );
@@ -819,9 +819,9 @@ const AIChatAgent: React.FC = () => {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty. Let me show you pieces that earn their place in your life." }]);
       } else {
         const itemCount = cart.reduce((sum, i) => sum + i.quantity, 0);
-        const commentary = itemCount >= 3 
+        const commentary = itemCount >= 3
           ? "Looking like a proper haul! Excellent taste."
-          : itemCount === 1 
+          : itemCount === 1
             ? "Just the one piece? I respect the minimalism, but there's room for a complementary item..."
             : "A solid start. These pieces actually work really well together.";
         setMessages(prev => [...prev, {
@@ -905,7 +905,7 @@ const AIChatAgent: React.FC = () => {
     const addMatch = m.match(/\b(add|buy|get|want|grab|i('ll| will) take)\b/i);
     if (addMatch) {
       let product = findProductByName(m);
-      
+
       // If not found with simple matching, try semantic search
       if (!product && embeddingModelStatus === 'ready') {
         const cleanQuery = m.replace(/\b(add|buy|get|want|grab|i('ll| will) take|to|my|the|a|an|please|cart|bag)\b/gi, '').trim();
@@ -915,7 +915,7 @@ const AIChatAgent: React.FC = () => {
             if (queryEmbedding) {
               let bestMatch: Product | null = null;
               let bestScore = 0;
-              
+
               for (const p of allProducts) {
                 let prodEmbedding = productEmbeddingsCache.get(p.id);
                 if (!prodEmbedding) {
@@ -930,7 +930,7 @@ const AIChatAgent: React.FC = () => {
                   }
                 }
               }
-              
+
               if (bestMatch && bestScore > 0.3) {
                 product = bestMatch;
               }
@@ -940,7 +940,7 @@ const AIChatAgent: React.FC = () => {
           }
         }
       }
-      
+
       if (product) {
         const qtyMatch = m.match(/(\d+)\s*(of|x|×|quantity|quantities|qty|pcs?|pieces?|items?)\b/i) || m.match(/\b(quantity|quantities|qty)\s*(\d+)/i);
         const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2]) : 1;
@@ -959,7 +959,7 @@ const AIChatAgent: React.FC = () => {
           .sort(() => Math.random() - 0.5).slice(0, 2);
         if (complementary.length > 0) {
           setTimeout(() => setMessages(prev => [...prev, {
-            role: 'assistant', 
+            role: 'assistant',
             text: `By the way, these pair really well with that: ${complementary.map(c => c.name).join(', ')}. Check the store.`
           }]), 800);
         }
@@ -985,7 +985,7 @@ const AIChatAgent: React.FC = () => {
       const msgRudeness = detectRudeness(m);
       const newRudenessScore = msgRudeness > 0 ? rudenessScore + msgRudeness : Math.max(0, rudenessScore - 1);
       setRudenessScore(newRudenessScore);
-      
+
       if (cart.length === 0) {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty — add some pieces first and then we can talk numbers. I don't negotiate in hypotheticals." }]);
         return { handled: true, intent: 'haggle_empty' };
@@ -1021,7 +1021,7 @@ const AIChatAgent: React.FC = () => {
       const cartCategories = cart.map(i => i.product.category);
       const cartTags = cart.flatMap(i => i.product.tags || []);
       const cartIds = cart.map(i => i.product.id);
-      
+
       const recs = allProducts
         .filter(p => !cartIds.includes(p.id))
         .map(p => ({
@@ -1031,9 +1031,9 @@ const AIChatAgent: React.FC = () => {
         .sort((a, b) => b.score - a.score)
         .slice(0, 4)
         .map(r => r.product);
-      
+
       if (recs.length > 0) {
-        const commentary = cart.length > 0 
+        const commentary = cart.length > 0
           ? `Based on what's in your bag, these would work really well: ${recs.map(r => r.name).join(', ')}. I've updated the store grid.`
           : `Here's what commands attention: ${recs.map(r => r.name).join(', ')}. Check the store grid.`;
         updateProductFilter({ query: recs.map(r => r.name).join(' '), productIds: recs.map(r => r.id) });
@@ -1051,7 +1051,7 @@ const AIChatAgent: React.FC = () => {
       if (product) {
         const avgRating = getAvgRating(product);
         const reviewCount = product.reviews?.length || 0;
-        const priceComment = product.price > 500 
+        const priceComment = product.price > 500
           ? "It's an investment piece — worth every dollar."
           : "Great value for the quality.";
         setMessages(prev => [...prev, {
@@ -1068,14 +1068,14 @@ const AIChatAgent: React.FC = () => {
     const hasPriceFilter = /\b(under|over|less than|more than|cheaper|budget|affordable)\s*\$?\d*/i.test(m);
     const hasProductKeywords = /\b(coat|jacket|shirt|pants|trousers|shoes|boots|bag|tote|ring|watch|lamp|vase|rug|blanket|outfit|clothes|clothing|apparel|accessories)\b/i.test(m);
     const hasOccasion = /\b(wedding|office|work|casual|formal|summer|winter|evening|date|party|travel)\b/i.test(m);
-    
+
     // Only do local search if there's clear shopping intent
     if (hasSearchIntent || hasPriceFilter || (hasProductKeywords && m.split(/\s+/).length >= 3)) {
       const searchResults = semanticSearch(m);
       if (searchResults.length > 0) {
         const display = searchResults.slice(0, 6);
         updateProductFilter({ query: m, productIds: display.map(p => p.id) });
-        
+
         // Generate contextual response based on query
         let commentary: string;
         if (hasPriceFilter) {
@@ -1088,7 +1088,7 @@ const AIChatAgent: React.FC = () => {
         } else {
           commentary = `Found ${display.length} pieces that match. The store grid is showing them now.`;
         }
-        
+
         setMessages(prev => [...prev, {
           role: 'assistant',
           text: commentary
@@ -1120,8 +1120,8 @@ const AIChatAgent: React.FC = () => {
     //   - Attempt 1 → 2: Second request, AI probes deeper, tests commitment  
     //   - Attempt 2+: Third+ request, AI may now grant discount via generate_coupon tool
     // Track negotiation attempts (discount requests)
-    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) && 
-                              /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
+    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) &&
+      /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
     const currentNegotiationAttempts = isDiscountRequest ? negotiationAttempts + 1 : negotiationAttempts;
     if (isDiscountRequest) {
       console.log('[NEGOTIATION] Discount request detected in message:', userMessage);
@@ -1137,8 +1137,8 @@ const AIChatAgent: React.FC = () => {
     console.log('[LOCAL_INTENT] Result:', localResult.handled ? 'HANDLED' : 'PASSED_TO_AI', '| Intent:', localResult.intent);
     if (localResult.handled) {
       setConversationHistory(prev => [...prev.slice(-8),
-        { role: 'user', text: userMessage },
-        { role: 'assistant', text: `[local:${localResult.intent}]` }
+      { role: 'user', text: userMessage },
+      { role: 'assistant', text: `[local:${localResult.intent}]` }
       ]);
       logClerkInteraction({
         user_id: user?.id, user_email: user?.email,
@@ -1227,7 +1227,7 @@ CURRENT STATE:
       const { response } = await callGroqWithFallback(chatMessages, groqTools);
       const choice = response.choices[0];
       const message = choice?.message;
-      
+
       console.log('[GROQ_RESPONSE] Tool calls:', message?.tool_calls?.length || 0);
       console.log('[GROQ_RESPONSE] Has text content:', !!message?.content);
       if (message?.tool_calls?.length) {
@@ -1240,12 +1240,12 @@ CURRENT STATE:
         for (const toolCall of message.tool_calls) {
           const fnName = toolCall.function.name;
           let args: any = {};
-          try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch(e) {}
+          try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { }
 
           if (fnName === 'search_inventory') {
             // ═══ HYBRID SEARCH TOOL - THE MAGIC HAPPENS HERE ═══
             const searchStartTime = Date.now();
-            
+
             const { products, metadata } = await hybridSearch(args.query, {
               category: args.category,
               minPrice: args.min_price,
@@ -1272,7 +1272,7 @@ CURRENT STATE:
                 `Curated ${products.length} results via ${metadata.method} search in ${metadata.searchTime}ms:`,
                 `${products.length} matches from the archive (${metadata.vectorMatches} semantic + ${metadata.keywordMatches} keyword):`,
               ];
-              
+
               setMessages(prev => [...prev, {
                 role: 'assistant',
                 text: ragResult.assistantMessage,
@@ -1290,14 +1290,14 @@ CURRENT STATE:
             const query = (args.query || '').trim();
             if (!query || query.length < 2) {
               // Don't show products - give a conversational response instead
-              setMessages(prev => [...prev, { 
-                role: 'assistant', 
-                text: "I curate experiences, not dump catalogs. Give me a style, an occasion, or a budget—and I'll build your look." 
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                text: "I curate experiences, not dump catalogs. Give me a style, an occasion, or a budget—and I'll build your look."
               }]);
               didShowSomething = true;
               continue;
             }
-            
+
             // Use embedding results if available, else fall back to keyword search
             let results = embeddingResults.length > 0 ? embeddingResults : semanticSearch(query, args.category);
             if (results.length > 0) {
@@ -1311,8 +1311,8 @@ CURRENT STATE:
                 `Let me show you pieces that earn their place in your life.`,
               ];
               const response = searchResponses[Math.floor(Math.random() * searchResponses.length)];
-              setMessages(prev => [...prev, { 
-                role: 'assistant', 
+              setMessages(prev => [...prev, {
+                role: 'assistant',
                 text: response,
                 products: results.slice(0, 3) // Show top 3 in chat
               }]);
@@ -1320,7 +1320,7 @@ CURRENT STATE:
               setMessages(prev => [...prev, { role: 'assistant', text: "Nothing matches that criteria exactly. Refine your vision—give me a style, an occasion, or a budget." }]);
             }
             didShowSomething = true;
-            
+
           } else if (fnName === 'add_to_cart') {
             let product = allProducts.find(p => p.id === args.product_id);
             if (!product) {
@@ -1330,7 +1330,7 @@ CURRENT STATE:
                 p.id.toLowerCase().includes(q) ||
                 q.includes(p.name.toLowerCase())
               );
-              
+
               // If still not found, use semantic search (RAG)
               if (!product && embeddingModelStatus === 'ready') {
                 try {
@@ -1338,7 +1338,7 @@ CURRENT STATE:
                   if (queryEmbedding) {
                     let bestMatch: Product | null = null;
                     let bestScore = 0;
-                    
+
                     for (const p of allProducts) {
                       let prodEmbedding = productEmbeddingsCache.get(p.id);
                       if (!prodEmbedding) {
@@ -1353,7 +1353,7 @@ CURRENT STATE:
                         }
                       }
                     }
-                    
+
                     // Use semantic match if score is decent (>0.3)
                     if (bestMatch && bestScore > 0.3) {
                       product = bestMatch;
@@ -1407,12 +1407,12 @@ CURRENT STATE:
             // RAG-backed coupon generation — validates against bottom_price, injects into cart session
             console.log('[COUPON] generate_coupon called. currentNegotiationAttempts=', currentNegotiationAttempts, 'newRudenessScore=', newRudenessScore);
             console.log('[COUPON] Block condition check: (', currentNegotiationAttempts, '<', 2, '=', currentNegotiationAttempts < 2, ') && (', newRudenessScore, '<', 3, '=', newRudenessScore < 3, ')');
-            
+
             // HARD BLOCK: Prevent coupon generation on first 1-2 attempts (unless rude)
             if (currentNegotiationAttempts < 2 && newRudenessScore < 3) {
               console.log('[COUPON] ✅ BLOCKED - Too early (attempt', currentNegotiationAttempts, '). Forcing conversational response.');
               let probingResponses: string[];
-              
+
               if (currentNegotiationAttempts === 0) {
                 // First attempt - ask for context
                 probingResponses = [
@@ -1430,16 +1430,16 @@ CURRENT STATE:
                   "Alright, we're getting somewhere. But before I can pull any strings, are these pieces you'll actually keep for years? I need to justify this.",
                 ];
               }
-              
-              setMessages(prev => [...prev, { 
-                role: 'assistant', 
-                text: probingResponses[Math.floor(Math.random() * probingResponses.length)] 
+
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                text: probingResponses[Math.floor(Math.random() * probingResponses.length)]
               }]);
               didShowSomething = true;
               negotiationBlocked = true; // Prevent AI text response from overriding this
               continue; // Skip coupon generation entirely
             }
-            
+
             const couponResult: CouponResult = handleGenerateCouponToolCall(
               args,
               cart,
@@ -1472,12 +1472,12 @@ CURRENT STATE:
               console.log('[COUPON] DISCOUNT APPLIED:', couponResult.discountPercent, '% for', couponResult.reason);
               applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
               setNegotiationAttempts(0); // Reset after successful discount
-              setShowDiscountToast({ 
-                code: couponResult.couponCode, 
-                percent: couponResult.discountPercent, 
-                reason: couponResult.reason 
+              setShowDiscountToast({
+                code: couponResult.couponCode,
+                percent: couponResult.discountPercent,
+                reason: couponResult.reason
               });
-              
+
               // Custom earned message after multi-turn negotiation
               const earnedMessages = [
                 `Alright, you've earned it. ${couponResult.discountPercent}% off for ${couponResult.reason.toLowerCase()}. The Clerk has a heart after all.`,
@@ -1485,14 +1485,14 @@ CURRENT STATE:
                 `Okay, okay. You win. ${couponResult.discountPercent}% discount for ${couponResult.reason.toLowerCase()}. But this stays between us.`,
                 `You know what? I respect the persistence. ${couponResult.discountPercent}% off. Don't tell my manager.`,
               ];
-              
+
               setMessages(prev => [...prev, {
                 role: 'assistant',
                 text: earnedMessages[Math.floor(Math.random() * earnedMessages.length)],
-                coupon: { 
-                  code: couponResult.couponCode, 
-                  percent: couponResult.discountPercent, 
-                  reason: couponResult.reason 
+                coupon: {
+                  code: couponResult.couponCode,
+                  percent: couponResult.discountPercent,
+                  reason: couponResult.reason
                 }
               }]);
               addToast(`${percent}% discount applied: ${code}`, 'success');
@@ -1504,7 +1504,7 @@ CURRENT STATE:
           } else if (fnName === 'change_theme') {
             const currentTheme = theme;
             const targetMode = args.mode;
-            
+
             // Toggle if no mode specified, or switch to the specified mode
             if (!targetMode || targetMode !== currentTheme) {
               toggleTheme();
@@ -1520,7 +1520,7 @@ CURRENT STATE:
               setMessages(prev => [...prev, { role: 'assistant', text: `Already in ${currentTheme} mode. Looking good.` }]);
             }
             didShowSomething = true;
-            
+
           } else if (fnName === 'initiate_checkout') {
             await handleLocalIntent('checkout');
             didShowSomething = true;
@@ -1542,7 +1542,7 @@ CURRENT STATE:
       if (message?.content && !negotiationBlocked) {
         finalClerkResponse = message.content;
         console.log('[AI_RESPONSE] Text content received:', finalClerkResponse.substring(0, 100) + '...');
-        
+
         // SAFETY CHECK: If AI mentions discounts in text without calling tool, block it
         const mentionsDiscount = /\b(\d+%|\d+\s*percent|percent.*off|discount.*granted|you.*got.*discount|here.*your.*discount|applied.*discount|giving.*you)/i.test(finalClerkResponse);
         if (mentionsDiscount && currentNegotiationAttempts < 2) {
@@ -1585,19 +1585,19 @@ CURRENT STATE:
       }
 
       setConversationHistory(prev => [...prev.slice(-8),
-        { role: 'user', text: userMessage },
-        { role: 'assistant', text: finalClerkResponse || '(showed products)' }
+      { role: 'user', text: userMessage },
+      { role: 'assistant', text: finalClerkResponse || '(showed products)' }
       ]);
 
     } catch (error: any) {
       console.error("Clerk error:", error);
       setIsRetrieving(false);
-      
+
       // Check if it's a rate limit error (429)
       if (error?.status === 429 || error?.message?.includes('rate_limit') || error?.message?.includes('Rate limit')) {
         console.error('[GROQ_ERROR] Rate limit exceeded. You are hitting Groq free tier limits.');
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
           text: "I'm getting a lot of requests right now! Please wait 30 seconds and try again, or check your Groq API rate limits.",
           error: true
         }]);
@@ -1605,13 +1605,13 @@ CURRENT STATE:
         setIsRetrieving(false);
         return;
       }
-      
+
       // Check if it's an API key error
       if (error?.status === 401 || error?.message?.includes('Invalid API Key') || error?.message?.includes('invalid_api_key')) {
         console.error('[GROQ_ERROR] Invalid API key. Please check your .env file at project root and set VITE_GROQ_API_KEY');
         console.error('[GROQ_ERROR] Current API key:', import.meta.env.VITE_GROQ_API_KEY ? 'Set (length: ' + import.meta.env.VITE_GROQ_API_KEY.length + ')' : 'NOT SET');
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
           text: "I'm having trouble connecting right now. Please check the API configuration and try again.",
           error: true
         }]);
@@ -1619,12 +1619,12 @@ CURRENT STATE:
         setIsRetrieving(false);
         return; // Exit early, don't grant any discounts
       }
-      
+
       // Check if it's a tool parameter error (400)
       if (error?.status === 400 && error?.message?.includes('tool')) {
         console.error('[GROQ_ERROR] Tool parameter validation error:', error.message);
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
           text: "I'm having trouble processing that request. Could you rephrase it?",
           error: true
         }]);
@@ -1632,42 +1632,42 @@ CURRENT STATE:
         setIsRetrieving(false);
         return;
       }
-      
+
       // AI failed — give a helpful conversational response, not just product dump
       const isQuestion = /\?|what|how|why|which|when|where|can|could|would|should/i.test(userMessage);
       const mentionsProduct = /coat|jacket|shirt|pants|shoes|bag|ring|watch|outfit/i.test(userMessage);
       const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*off|birthday|student)/i.test(userMessage);
-      
+
       // NEVER grant discounts in error scenarios
       if (isDiscountRequest) {
         console.log('[ERROR_HANDLER] Discount request in error scenario - BLOCKING');
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
           text: "I'd love to help with that, but I need to get my systems back online first. Try asking again in a moment."
         }]);
       } else if (mentionsProduct) {
         const localResults = semanticSearch(userMessage);
         if (localResults.length > 0) {
           updateProductFilter({ query: userMessage, productIds: localResults.map(p => p.id) });
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
+          setMessages(prev => [...prev, {
+            role: 'assistant',
             text: `Good eye! I found ${localResults.length} matching pieces — the store grid has been updated.`
           }]);
         } else {
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            text: "Hmm, nothing quite matches that. Try describing the vibe you're going for — casual? formal? something in between?" 
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            text: "Hmm, nothing quite matches that. Try describing the vibe you're going for — casual? formal? something in between?"
           }]);
         }
       } else if (isQuestion) {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          text: "Good question! I'd love to help. Could you tell me more about what you're looking for? An occasion, a style, a price range — whatever helps me narrow it down." 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: "Good question! I'd love to help. Could you tell me more about what you're looking for? An occasion, a style, a price range — whatever helps me narrow it down."
         }]);
       } else {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          text: "I'm all ears! Just tell me what brings you in today — looking for something specific, need outfit advice, or maybe want to haggle a bit? I'm good at all three." 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: "I'm all ears! Just tell me what brings you in today — looking for something specific, need outfit advice, or maybe want to haggle a bit? I'm good at all three."
         }]);
       }
     } finally {
@@ -1680,17 +1680,27 @@ CURRENT STATE:
     if (cart.length === 0) return;
     setIsRedirecting(true);
     try {
-      const mockRequest = {
-        method: 'POST',
-        json: async () => ({ cartItems: cart, negotiatedTotal: cartTotal, discountPercent: negotiatedDiscount })
-      };
-      const response = await checkoutHandler(mockRequest as any);
-      const { sessionId } = await response.json();
-      const stripe = getStripe();
-      await stripe.redirectToCheckout({ sessionId });
-    } catch (err) {
-      console.error(err);
+      // Use the new Stripe integration from lib/stripe
+      const { createCheckoutSession } = await import('../lib/stripe');
+
+      await createCheckoutSession({
+        lineItems: cart.map(item => ({
+          id: item.product.id.toString(),
+          name: item.product.name,
+          image_url: item.product.image_url,
+          price: item.product.price,
+          quantity: item.quantity
+        })),
+        totalAmount: cartTotal,
+        discountPercent: negotiatedDiscount,
+        couponCode: appliedCoupon,
+        customerEmail: user?.email
+      });
+      // createCheckoutSession handles the redirect internally
+    } catch (err: any) {
+      console.error("Checkout failed:", err);
       setIsRedirecting(false);
+      addToast(err.message || 'Checkout failed. Please try again.', 'error');
     }
   };
 
@@ -1713,7 +1723,7 @@ CURRENT STATE:
     const avgRating = getAvgRating(product);
     const reviewCount = product.reviews?.length || 0;
     const topReview = product.reviews?.[0];
-    
+
     return (
       <div className="group bg-white dark:bg-gray-900 border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 transition-all duration-300 overflow-hidden flex-shrink-0 w-[200px]">
         <div className="relative aspect-square overflow-hidden bg-gray-50 dark:bg-gray-800">
@@ -1725,7 +1735,7 @@ CURRENT STATE:
         <div className="p-3">
           <p className="text-[9px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-bold">{product.category}</p>
           <p className="text-xs font-bold line-clamp-2 mt-1 leading-tight">{product.name}</p>
-          
+
           {/* Reviews */}
           <div className="flex items-center gap-1 mt-2">
             {[...Array(5)].map((_, i) => (
@@ -1733,14 +1743,14 @@ CURRENT STATE:
             ))}
             <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-1">({reviewCount})</span>
           </div>
-          
+
           {/* Top Review Snippet */}
           {topReview && (
             <p className="text-[8px] text-gray-500 dark:text-gray-400 italic mt-2 line-clamp-2 leading-tight">
               "{topReview.comment}"
             </p>
           )}
-          
+
           {/* Actions */}
           <div className="flex items-center gap-2 mt-3">
             <button
@@ -1830,7 +1840,7 @@ CURRENT STATE:
       <div className={`fixed inset-y-0 right-0 z-[130] w-full sm:w-[520px] transition-all duration-700 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="absolute inset-0 glass-panel border-l border-black/5 dark:border-white/10" />
         <div className="relative h-full flex flex-col">
-          
+
           {/* Header */}
           <div className="p-6 md:p-10 border-b border-black/5 dark:border-white/5 flex justify-between items-end">
             <div>
@@ -1875,7 +1885,7 @@ CURRENT STATE:
                 <div className={`max-w-[95%] p-4 ${m.role === 'user' ? 'text-right font-light italic text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900' : 'text-left text-black dark:text-white bg-black/5 dark:bg-white/5'} ${m.error ? 'border-l-2 border-red-500 dark:border-red-400' : ''}`}>
                   {m.error && <AlertCircle size={12} className="text-red-500 dark:text-red-400 mb-2 inline-block mr-1" />}
                   <span className="whitespace-pre-line text-sm leading-relaxed">{m.text}</span>
-                  
+
                   {/* Search Metadata */}
                   {m.searchMetadata && (
                     <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10">
@@ -1885,14 +1895,14 @@ CURRENT STATE:
                     </div>
                   )}
                 </div>
-                
+
                 {/* PRODUCT CARDS - CRITICAL FEATURE */}
                 {m.products && m.products.length > 0 && (
                   <div className="flex gap-3 overflow-x-auto mt-3 pb-2 w-full no-scrollbar">
                     {m.products.map(p => <ProductCardInChat key={p.id} product={p} />)}
                   </div>
                 )}
-                
+
                 {m.coupon && <CouponCard coupon={m.coupon} />}
                 {m.products && m.products.length > 0 && (
                   <div className="mt-4 w-full max-w-md space-y-2">
@@ -1904,7 +1914,7 @@ CURRENT STATE:
                           <p className="text-[10px] text-gray-500 dark:text-gray-400">${product.price}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button 
+                          <button
                             onClick={() => { addToCartWithQuantity(product.id, 1); addToast(`${product.name} added`, 'success'); }}
                             className="px-3 py-1.5 text-[9px] uppercase tracking-wider font-black bg-black dark:bg-white text-white dark:text-black hover:opacity-80 transition-opacity active:scale-95"
                           >

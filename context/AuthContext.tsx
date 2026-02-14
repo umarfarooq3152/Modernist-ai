@@ -53,32 +53,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const fetchProfile = async (userId: string) => {
     try {
+      // Race against 5s timeout
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+      );
+
       // Add timestamp to prevent caching issues
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
+      const { data, error } = await Promise.race([
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single(),
+        timeoutPromise
+      ]) as any;
+
       if (error) {
         // Profile doesn't exist - create one
         if (error.code === 'PGRST116') {
           console.log('Profile not found, creating new profile with user data...');
-          
+
           // Get current user data from auth.users to populate profile
           const { data: { user: authUser } } = await supabase.auth.getUser();
-          
+
           // Extract name and email from user metadata
           let firstName = null;
           let lastName = null;
           let email = authUser?.email || null;
-          
+
           if (authUser?.user_metadata) {
             // For Google OAuth: full_name, avatar_url, picture
             // For email signup: full_name, display_name
             const fullName = authUser.user_metadata.full_name || authUser.user_metadata.display_name || '';
             const nameParts = fullName.trim().split(' ');
-            
+
             if (nameParts.length > 0) {
               firstName = nameParts[0];
               if (nameParts.length > 1) {
@@ -86,7 +94,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
             }
           }
-          
+
           const { data: newProfile, error: insertError } = await supabase
             .from('profiles')
             .insert([
@@ -101,7 +109,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ])
             .select()
             .single();
-          
+
           if (insertError) {
             console.error('Failed to create profile:', insertError);
             console.log('Profile creation failed. Please run FIX_PROFILES_TABLE.sql in Supabase SQL Editor.');
@@ -128,37 +136,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     let isMounted = true;
-    
+
     const checkSession = async () => {
       try {
         const hash = window.location.hash;
         const search = window.location.search;
-        
+
         console.log('Checking session - Hash:', hash.substring(0, 50), 'Search:', search.substring(0, 50));
-        
+
         // Handle password recovery tokens ONLY (don't login user)
         if (hash.includes('access_token') && hash.includes('type=recovery')) {
           console.log('Recovery tokens detected - storing for password reset only');
-          
+
           if (recoverySessionSet.current) {
             console.log('Recovery tokens already processed, skipping...');
             setLoading(false);
             return;
           }
-          
+
           recoverySessionSet.current = true;
-          
+
           const tokenStart = hash.indexOf('access_token');
           if (tokenStart > 0) {
             const paramsString = hash.substring(tokenStart);
             const params = new URLSearchParams(paramsString);
             const accessToken = params.get('access_token');
             const refreshToken = params.get('refresh_token');
-            
+
             if (accessToken && refreshToken) {
               console.log('Storing recovery tokens (NOT logging in)...');
               setRecoveryTokens({ access: accessToken, refresh: refreshToken });
-              
+
               if (isMounted) {
                 setLoading(false);
               }
@@ -166,28 +174,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
         }
-        
+
         // OAuth login or normal session check
         if (search.includes('access_token') || hash.includes('access_token')) {
           console.log('OAuth callback detected - Supabase will auto-establish session');
         }
-        
+
         // Get session (automatically handles OAuth tokens from URL)
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         if (!isMounted) return;
-        
+
         console.log('Session check result:', !!initialSession, initialSession?.user?.email);
-        
+
         if (initialSession) {
           console.log('Session found! Setting user and fetching profile...');
         } else {
           console.log('No active session');
         }
-        
+
         setSession(initialSession);
         const currentUser = initialSession?.user ?? null;
         setUser(currentUser);
-        
+
         if (currentUser) {
           await fetchProfile(currentUser.id);
         }
@@ -206,26 +214,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
-      
+
       // Ignore auth state changes during password recovery update
       if (isUpdatingRecoveryPassword.current) {
         console.log('Ignoring auth state change during password recovery:', event);
         return;
       }
-      
+
       console.log('Auth state change event:', event, 'Session exists:', !!session, 'User:', session?.user?.email);
-      
+
       setSession(session);
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      
+
       if (currentUser) {
         console.log('User authenticated:', currentUser.email);
         await fetchProfile(currentUser.id);
       } else {
         setProfile(null);
       }
-      
+
       if (isMounted) {
         setLoading(false);
       }
@@ -278,32 +286,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const resetPassword = async (email: string) => {
     // Get the current origin dynamically (works for both dev and production)
     const redirectUrl = `${window.location.origin}/#/password-reset`;
-    
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: redirectUrl,
     });
-    
+
     if (error) throw error;
   };
 
   const changePassword = async (currentPassword: string, newPassword: string) => {
     if (!user?.email) throw new Error('User not authenticated');
-    
+
     // Verify current password by attempting to sign in
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: user.email,
       password: currentPassword
     });
-    
+
     if (signInError) {
       throw new Error('Current password is incorrect');
     }
-    
+
     // Update to new password
     const { error: updateError } = await supabase.auth.updateUser({
       password: newPassword
     });
-    
+
     if (updateError) throw updateError;
   };
 
@@ -311,43 +319,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!recoveryTokens) {
       throw new Error('No recovery tokens found. Please request a new password reset link.');
     }
-    
+
     console.log('Updating password with recovery tokens (NO LOGIN)...');
-    
+
     // Set flag to prevent auth state changes from logging user in
     isUpdatingRecoveryPassword.current = true;
-    
+
     try {
       // Create a temporary session just for the password update
       const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
         access_token: recoveryTokens.access,
         refresh_token: recoveryTokens.refresh
       });
-      
+
       if (sessionError || !sessionData.session) {
         console.error('Failed to create temporary session:', sessionError);
         throw new Error('Recovery session expired. Please request a new password reset link.');
       }
-      
+
       console.log('Temporary session created, updating password...');
-      
+
       // Update password
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       });
-      
+
       if (updateError) {
         console.error('Password update error:', updateError);
         throw updateError;
       }
-      
+
       console.log('Password updated successfully! Signing out...');
-      
+
       // Sign out immediately - DON'T keep user logged in
       await supabase.auth.signOut();
-      
+
       console.log('Signed out successfully');
-      
+
     } catch (error: any) {
       console.error('Exception during password update:', error);
       throw error;
@@ -363,12 +371,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Reset recovery session flag and clear tokens
     recoverySessionSet.current = false;
     setRecoveryTokens(null);
-    
+
     // Clear any recovery tokens from URL
     if (window.location.hash.includes('access_token')) {
       window.location.hash = '/';
     }
-    
+
     await supabase.auth.signOut();
   };
 
@@ -387,7 +395,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const uploadAvatar = async (file: File) => {
     if (!user) throw new Error('Identity verification required for portrait sync.');
-    
+
     // Validate file type
     if (!file.type.startsWith('image/')) {
       throw new Error('Only image files are allowed.');
@@ -397,7 +405,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (file.size > 5 * 1024 * 1024) {
       throw new Error('Image must be smaller than 5MB.');
     }
-    
+
     const fileExt = file.name.split('.').pop();
     const fileName = `portrait-${Date.now()}.${fileExt}`;
     const filePath = `${user.id}/${fileName}`;
@@ -415,7 +423,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Upload new avatar
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, file, { 
+      .upload(filePath, file, {
         upsert: true,
         cacheControl: '3600',
         contentType: file.type
@@ -423,12 +431,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (uploadError) {
       console.error("Storage upload failed:", uploadError);
-      
+
       // Provide specific error messages for common RLS issues
       if (uploadError.message.includes('policy')) {
         throw new Error('Permission denied. Please check storage bucket policies (RLS). See SUPABASE_STORAGE_SETUP.md');
       }
-      
+
       throw new Error(uploadError.message || 'Upload failed. Please check storage bucket configuration.');
     }
 
@@ -442,16 +450,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     // Update profile with new avatar URL
-    await updateProfile({ 
+    await updateProfile({
       avatar_url: publicUrl,
-      picture_url: publicUrl 
+      picture_url: publicUrl
     });
-    
+
     return publicUrl;
   };
 
   return (
-    <AuthContext.Provider value={{ 
+    <AuthContext.Provider value={{
       user, session, profile, loading, recoveryTokens, loginWithGoogle, registerWithEmail,
       loginWithEmail, resetPassword, changePassword, updatePasswordAfterRecovery, logout, updateProfile, uploadAvatar,
       isAuthModalOpen, setAuthModalOpen, refreshProfile
