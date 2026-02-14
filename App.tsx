@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Link } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AuthProvider } from './context/AuthContext';
-import { ThemeProvider } from 'next-themes';
+import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import CartSidebar from './components/CartSidebar';
@@ -159,7 +159,7 @@ const ToastManager: React.FC = () => {
 
 const ProductGrid: React.FC = () => {
   const { products, currentCategory, activeVibe, isCurating, isInitialLoading, sortOrder, setSortOrder, resetArchive } = useStore();
-  console.log('[ProductGrid] render: products.length=', products.length, 'isInitialLoading=', isInitialLoading, 'isCurating=', isCurating);
+  console.log('[ProductGrid] render: products.length=', products.length, 'isInitialLoading=', isInitialLoading, 'isCurating=', isCurating, 'productIds=', products.map(p => p.id));
 
   if (isInitialLoading) {
     return (
@@ -220,7 +220,7 @@ const ProductGrid: React.FC = () => {
             <button onClick={resetArchive} className="border border-black px-12 py-6 text-[10px] font-black uppercase tracking-[0.5em] hover:bg-black hover:text-white transition-all active:scale-95">Reset Selection</button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 md:gap-x-12 gap-y-16 md:gap-y-24">
+          <div key={`${products.length}-${products[0]?.id}-${products[products.length-1]?.id}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 md:gap-x-12 gap-y-16 md:gap-y-24">
             {products.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}

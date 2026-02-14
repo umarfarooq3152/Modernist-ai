@@ -177,7 +177,7 @@ const ProductDetail: React.FC = () => {
     
     setIsZooming(true);
     setZoomStyle({
-      transform: 'scale(2.5)',
+      transform: 'scale(1.3)',
       transformOrigin: `${x}% ${y}%`,
       transition: 'transform 0.1s ease-out',
     });

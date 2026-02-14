@@ -198,8 +198,7 @@ const AIChatAgent: React.FC = () => {
   const [workingModel, setWorkingModel] = useState<string>(MODEL_FALLBACK_CHAIN[0]);
   const [conversationHistory, setConversationHistory] = useState<{ role: string; text: string }[]>([]);
   const [rudenessScore, setRudenessScore] = useState(0);
-  
-  // RAG-specific state
+  const [negotiationAttempts, setNegotiationAttempts] = useState(0);
   const [productEmbeddingsCache, setProductEmbeddingsCache] = useState<Map<string, number[]>>(new Map());
   const [embeddingModelStatus, setEmbeddingModelStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [bm25Index, setBm25Index] = useState<BM25Ranker | null>(null);
@@ -434,6 +433,12 @@ const AIChatAgent: React.FC = () => {
     } else {
       document.body.style.overflow = 'unset';
     }
+    
+    // Reset negotiation when chat is reopened
+    if (isOpen) {
+      setNegotiationAttempts(0);
+    }
+    
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
@@ -633,12 +638,12 @@ const AIChatAgent: React.FC = () => {
       type: 'function',
       function: {
         name: 'add_to_cart',
-        description: 'Add product to bag by ID. Use when user says "add this", "I\'ll take it", "buy the X".',
+        description: 'Add product to bag by ID or name. Use when user says "add this", "I\'ll take it", "buy the X", "add [product name] to cart". Supports natural language product names like "skeleton watch", "leather jacket", etc. IMPORTANT: Extract quantity from user message (e.g., "add 2 watches", "add watch 3 quantity", "5 of those").',
         parameters: {
           type: 'object',
           properties: {
-            product_id: { type: 'string', description: 'Product ID' },
-            quantity: { type: 'number', description: 'Quantity (default 1)' },
+            product_id: { type: 'string', description: 'The product ID or natural language product name/description (e.g., "skeleton watch", "leather tote", "minimalist watch")' },
+            quantity: { type: 'number', description: 'Quantity to add (default 1). Extract from user message: "2", "3 quantity", "5 pcs", etc.' },
           },
           required: ['product_id'],
         },
@@ -648,7 +653,7 @@ const AIChatAgent: React.FC = () => {
       type: 'function',
       function: {
         name: 'generate_coupon',
-        description: 'Generate discount coupon. Use when user asks for deal/discount with reason (birthday, student, loyal). Refuse if rude.',
+        description: 'Generate a discount coupon. CRITICAL: Only call this after 2-3 conversation turns where you probed for their reason and built rapport. DO NOT call on first discount request - ask probing questions first. If user is rude/demanding, call with negative discount (surcharge). Context required: negotiation_attempts count (if available) - only grant after multiple turns.',
         parameters: {
           type: 'object',
           properties: {
@@ -681,15 +686,93 @@ const AIChatAgent: React.FC = () => {
         parameters: { type: 'object', properties: {} },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'show_cart_summary',
+        description: 'Show current cart contents.',
+        parameters: { type: 'object', properties: {} },
+      },
+    },
   ];
 
-  // ══════════════════════════════════════════════════════════════
-  // LOCAL INTENT HANDLERS (No API needed)
-  // ══════════════════════════════════════════════════════════════
+  // ─── LOCAL INTENT ENGINE (No API calls needed) ───
+  type IntentResult = {
+    handled: boolean;
+    intent?: string;
+  };
 
-  type IntentResult = { handled: boolean; intent?: string };
+  const semanticSearch = (query: string, category?: string): Product[] => {
+    try {
+    const q = query.toLowerCase();
+    
+    // Keyword expansion map for vibe-based search
+    const vibeMap: Record<string, string[]> = {
+      summer: ['summer', 'linen', 'light', 'breathable', 'relaxed', 'casual'],
+      wedding: ['formal', 'elegant', 'essential', 'classic', 'smart', 'evening'],
+      winter: ['winter', 'wool', 'down', 'warm', 'shearling', 'outerwear'],
+      office: ['office', 'formal', 'tailoring', 'smart', 'classic', 'staple'],
+      casual: ['casual', 'relaxed', 'staple', 'heritage', 'rugged'],
+      luxury: ['luxury', 'premium', 'leather', 'cashmere', 'statement', 'large'],
+      minimalist: ['minimalist', 'modern', 'essential', 'functional', 'art'],
+      gift: ['gift', 'accessory', 'jewelry', 'color', 'art', 'functional'],
+      travel: ['travel', 'leather', 'functional', 'performance', 'technical'],
+      evening: ['evening', 'smart', 'formal', 'elegant', 'jewelry'],
+      italy: ['summer', 'linen', 'light', 'relaxed', 'casual', 'classic', 'smart'],
+    };
 
-  const handleLocalIntent = (msg: string): IntentResult => {
+    // Expand query with vibe keywords
+    let searchTerms = q.split(/\s+/).filter(w => w.length > 2);
+    for (const [vibe, extra] of Object.entries(vibeMap)) {
+      if (q.includes(vibe)) searchTerms = [...searchTerms, ...extra];
+    }
+    searchTerms = [...new Set(searchTerms)];
+
+    let results = allProducts.filter(p => {
+      const matchesCategory = !category || category === 'All' || (p.category || '').toLowerCase() === category.toLowerCase();
+      if (!matchesCategory) return false;
+      
+      const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
+      return searchTerms.some(term => text.includes(term));
+    });
+
+    // Price filtering
+    const priceMatch = q.match(/under\s*\$?(\d+)/i);
+    if (priceMatch) {
+      const maxPrice = parseInt(priceMatch[1]);
+      results = (results.length > 0 ? results : allProducts).filter(p => p.price <= maxPrice);
+    }
+    const overMatch = q.match(/over\s*\$?(\d+)/i);
+    if (overMatch) {
+      const minPrice = parseInt(overMatch[1]);
+      results = (results.length > 0 ? results : allProducts).filter(p => p.price >= minPrice);
+    }
+
+    // If nothing matched, try individual word matching against all products
+    if (results.length === 0) {
+      results = allProducts.filter(p => {
+        const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
+        return searchTerms.some(t => text.includes(t));
+      });
+    }
+    
+    return results;
+    } catch (e) {
+      console.error('[semanticSearch] crashed:', e);
+      return [];
+    }
+  };
+
+  const findProductByName = (input: string): Product | undefined => {
+    const q = input.toLowerCase();
+    return allProducts.find(p => 
+      q.includes(p.name.toLowerCase()) || 
+      p.name.toLowerCase().includes(q) ||
+      p.id === q
+    );
+  };
+
+  const handleLocalIntent = async (msg: string): Promise<IntentResult> => {
     const m = msg.toLowerCase().trim();
 
     // Greeting
@@ -703,13 +786,42 @@ const AIChatAgent: React.FC = () => {
       return { handled: true, intent: 'greeting' };
     }
 
-    // Help
-    if (/\b(help|what can you do|how does this work)\b/i.test(m)) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: `I'm The Clerk — your AI shopping assistant with elite search capabilities.\n\n🔍 **Hybrid Search**: "Show me summer dresses" → I use BM25 keyword matching + vector embeddings + reciprocal rank fusion to find exactly what you need\n🛒 **Shop**: "Add the cashmere sweater" → instant cart updates\n💰 **Haggle**: "Birthday discount?" → I'll negotiate (be polite!)\n🎨 **Filter**: "Sort by price" → real-time UI updates\n💳 **Checkout**: "Buy now" → seamless payment\n\nPowered by production-grade RAG architecture. Ask anything!`
-      }]);
+    // ── HELP / WHAT CAN YOU DO ──
+    if (/\b(help|what can you do|how does this work|what are you|who are you|commands|features)\b/i.test(m)) {
+      setMessages(prev => [...prev, { role: 'assistant', text: `I'm The Clerk — part stylist, part negotiator, full-time fashion enabler. Here's my repertoire:\n\n🔍 **Search**: "Show me summer outfits" or "leather under $500" → products appear instantly, no clicking needed\n🛒 **Shop**: "Add the cashmere sweater" or "I'll take 2 of those" → straight to your bag\n💰 **Haggle**: "Can I get a birthday discount?" → I'll see what I can do (just don't be rude, or prices go UP)\n🎨 **Filter**: "Sort by cheapest" or "Only outerwear" → the whole website changes in real-time\n💳 **Checkout**: "Buy now" → I'll handle the rest\n💡 **Style**: "What goes with this?" → honest pairing suggestions\n\nI also have opinions. Many opinions. Ask at your own risk.` }]);
       return { handled: true, intent: 'help' };
+    }
+
+    // ── THANKS / BYE ──
+    if (/^(thanks?|thank you|thx|ty|bye|goodbye|see ya|later|cheers)\b/i.test(m)) {
+      const responses = [
+        "Anytime! Go forth and look unreasonably good.",
+        "Happy to help! The archive will miss you. (I won't — I'll be here.)",
+        "You're welcome! Come back when you need more sartorial guidance. Or just to chat. I get lonely.",
+        "Cheers! May your outfits always make strangers question their life choices.",
+        "Later! Remember: confidence is the best accessory, but a good coat doesn't hurt either.",
+      ];
+      setMessages(prev => [...prev, { role: 'assistant', text: responses[Math.floor(Math.random() * responses.length)] }]);
+      return { handled: true, intent: 'farewell' };
+    }
+
+    // ── SHOW CART ──
+    if (/\b(what('?s| is) in my (cart|bag)|show (me )?(my )?(cart|bag)|view (my )?(cart|bag)|check (my )?(cart|bag))\b/i.test(m) && !/\b(add|put|place)\b.*\b(to|in)\b.*\b(cart|bag)\b/i.test(m)) {
+      if (cart.length === 0) {
+        setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty. Let me show you pieces that earn their place in your life." }]);
+      } else {
+        const itemCount = cart.reduce((sum, i) => sum + i.quantity, 0);
+        const commentary = itemCount >= 3 
+          ? "Looking like a proper haul! Excellent taste."
+          : itemCount === 1 
+            ? "Just the one piece? I respect the minimalism, but there's room for a complementary item..."
+            : "A solid start. These pieces actually work really well together.";
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: `${commentary}\n\n${buildCartContext()}`
+        }]);
+      }
+      return { handled: true, intent: 'show_cart' };
     }
 
     // Checkout
@@ -727,27 +839,298 @@ const AIChatAgent: React.FC = () => {
       return { handled: true, intent: 'checkout' };
     }
 
+    // ── SORT BY PRICE ──
+    if (/\b(cheap|cheaper|affordable|budget|low.?price|sort.*(price|cheap|low)|price.*(low|asc))\b/i.test(m)) {
+      setSortOrder('price-low');
+      updateProductFilter({ query: '' });
+      const sorted = [...allProducts].sort((a, b) => a.price - b.price).slice(0, 6);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        text: "Budget-conscious? Smart move. I've sorted the entire store by price — the website grid just updated. Check out the most wallet-friendly options on the left."
+      }]);
+      return { handled: true, intent: 'sort_cheap' };
+    }
+
+    if (/\b(expensive|premium|high.?end|luxury|sort.*(expensive|high)|price.*(high|desc))\b/i.test(m)) {
+      setSortOrder('price-high');
+      const sorted = [...allProducts].sort((a, b) => b.price - a.price).slice(0, 6);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        text: "Going for the top shelf? I like your energy. The grid now shows our most investment-worthy pieces first."
+      }]);
+      return { handled: true, intent: 'sort_expensive' };
+    }
+
+    // ── FILTER BY CATEGORY ──
+    const categoryMatch = m.match(/\b(show|filter|only|just).*(outerwear|basics|accessories|home|apparel|footwear)\b/i);
+    if (categoryMatch) {
+      const cat = categoryMatch[2].charAt(0).toUpperCase() + categoryMatch[2].slice(1).toLowerCase();
+      filterByCategory(cat);
+      const filtered = allProducts.filter(p => p.category === cat).slice(0, 6);
+      const categoryComments: Record<string, string> = {
+        'Outerwear': "Ah, investing in the first impression. Smart. The website now shows only outerwear:",
+        'Basics': "The foundation of a great wardrobe. Filtered to basics — these are your building blocks:",
+        'Accessories': "The finishing touches that separate good from great. Here's your accessory arsenal:",
+        'Home': "Making your space as refined as your wardrobe? I approve. Home collection incoming:",
+        'Apparel': "The core pieces. I've filtered to apparel — here's what's going to make you look good:",
+        'Footwear': "Shoes make the man — or woman. Or anyone, honestly. Footwear collection:",
+      };
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        text: categoryComments[cat] || `The store now shows only ${cat}. Take a look at the grid.`
+      }]);
+      return { handled: true, intent: 'filter_category' };
+    }
+
+    // ── SHOW ALL / RESET ──
+    if (/\b(show.*(all|everything)|reset|all products|see everything|browse all)\b/i.test(m)) {
+      filterByCategory('All');
+      const sample = [...allProducts].sort(() => Math.random() - 0.5).slice(0, 6);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        text: `Filters cleared — the full collection is now at your disposal. Browse the grid to explore.`
+      }]);
+      return { handled: true, intent: 'show_all' };
+    }
+
+    // ── ADD TO CART (by name) ──
+    const addMatch = m.match(/\b(add|buy|get|want|grab|i('ll| will) take)\b/i);
+    if (addMatch) {
+      let product = findProductByName(m);
+      
+      // If not found with simple matching, try semantic search
+      if (!product && embeddingModelStatus === 'ready') {
+        const cleanQuery = m.replace(/\b(add|buy|get|want|grab|i('ll| will) take|to|my|the|a|an|please|cart|bag)\b/gi, '').trim();
+        if (cleanQuery.length > 3) {
+          try {
+            const queryEmbedding = await getLocalEmbedding(cleanQuery);
+            if (queryEmbedding) {
+              let bestMatch: Product | null = null;
+              let bestScore = 0;
+              
+              for (const p of allProducts) {
+                let prodEmbedding = productEmbeddingsCache.get(p.id);
+                if (!prodEmbedding) {
+                  prodEmbedding = await getLocalEmbedding(`${p.name} ${p.description} ${p.tags.join(' ')}`);
+                  if (prodEmbedding) setProductEmbeddingsCache(prev => new Map(prev).set(p.id, prodEmbedding));
+                }
+                if (prodEmbedding) {
+                  const score = cosineSimilarity(queryEmbedding, prodEmbedding);
+                  if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = p;
+                  }
+                }
+              }
+              
+              if (bestMatch && bestScore > 0.3) {
+                product = bestMatch;
+              }
+            }
+          } catch (err) {
+            console.warn('[handleLocalIntent] Semantic search failed:', err);
+          }
+        }
+      }
+      
+      if (product) {
+        const qtyMatch = m.match(/(\d+)\s*(of|x|×|quantity|quantities|qty|pcs?|pieces?|items?)\b/i) || m.match(/\b(quantity|quantities|qty)\s*(\d+)/i);
+        const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2]) : 1;
+        addToCartWithQuantity(product.id, qty);
+        const addResponses = [
+          `${product.name} × ${qty} — secured. Excellent choice, honestly.`,
+          `Done! ${product.name} is in your bag. You have good taste.`,
+          `${product.name} added. ${qty > 1 ? `All ${qty} of them. ` : ''}I knew you'd pick that one.`,
+        ];
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: addResponses[Math.floor(Math.random() * addResponses.length)]
+        }]);
+        const complementary = allProducts
+          .filter(p => p.id !== product.id && p.category !== product.category)
+          .sort(() => Math.random() - 0.5).slice(0, 2);
+        if (complementary.length > 0) {
+          setTimeout(() => setMessages(prev => [...prev, {
+            role: 'assistant', 
+            text: `By the way, these pair really well with that: ${complementary.map(c => c.name).join(', ')}. Check the store.`
+          }]), 800);
+        }
+        return { handled: true, intent: 'add_to_cart' };
+      }
+    }
+
+    // ── REMOVE FROM CART ──
+    if (/\b(remove|take out|delete|drop)\b/i.test(m)) {
+      const product = cart.find(i => m.includes(i.product.name.toLowerCase()))?.product;
+      if (product) {
+        removeFromCart(product.id);
+        setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} removed. Having second thoughts? It happens to the best of us.` }]);
+        return { handled: true, intent: 'remove_from_cart' };
+      }
+    }
+
+    // ── HAGGLE / DISCOUNT ──
+    if (/\b(discount|deal|cheaper price|haggle|negotiate|coupon|lower.?price|better price|birthday|bday|student)\b/i.test(m)) {
+      const msgRudeness = detectRudeness(m);
+      const newRudenessScore = msgRudeness > 0 ? rudenessScore + msgRudeness : Math.max(0, rudenessScore - 1);
+      setRudenessScore(newRudenessScore);
+      
+      if (cart.length === 0) {
+        setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty — add some pieces first and then we can talk numbers. I don't negotiate in hypotheticals." }]);
+        return { handled: true, intent: 'haggle_empty' };
+      }
+
+      // RUDENESS SURCHARGE — rubric requirement: rude users get HIGHER prices
+      if (newRudenessScore >= 3) {
+        const surchargePercent = Math.min(newRudenessScore * 5, 25); // 15-25% surcharge
+        const surchargeCode = `RUDE-SURCHARGE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        applyNegotiatedDiscount(surchargeCode, -surchargePercent); // Negative = surcharge
+        const rudeResponses = [
+          `Interesting approach. Unfortunately, the archive has a dignity clause. Prices just went up ${surchargePercent}%. Try again with some refinement.`,
+          `I've seen better negotiation tactics from a parking meter. That attitude just earned a ${surchargePercent}% premium. Be nice and I might reconsider.`,
+          `The Clerk doesn't respond to hostility. I've added a ${surchargePercent}% courtesy fee. Perhaps restart this conversation with some class?`,
+        ];
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: rudeResponses[Math.floor(Math.random() * rudeResponses.length)],
+          error: true
+        }]);
+        addToast(`${surchargePercent}% surcharge applied for rudeness`, 'error');
+        return { handled: true, intent: 'haggle_rude_surcharge' };
+      }
+
+      // Determine discount based on reason
+      const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+      const floor = cart.reduce((sum, item) => sum + (item.product.bottom_price * item.quantity), 0);
+      
+      let discountPercent = 10; // default
+      let reason = "Loyal patron";
+      
+      if (/birthday|bday/i.test(m)) { discountPercent = 20; reason = "Birthday celebration"; }
+      else if (/student/i.test(m)) { discountPercent = 15; reason = "Student patron"; }
+      else if (/buying (two|2|three|3|multiple|several)/i.test(m) || cart.length >= 2) { discountPercent = 15; reason = "Bulk acquisition"; }
+      else if (/loyal|regular|returning/i.test(m)) { discountPercent = 15; reason = "Loyal patron"; }
+      else if (/military|veteran|service/i.test(m)) { discountPercent = 20; reason = "Service honor"; }
+      
+      discountPercent = Math.min(discountPercent, cart.length >= 3 ? 25 : 20);
+
+      const discountedTotal = Math.round(subtotal * (1 - discountPercent / 100));
+      if (discountedTotal >= floor) {
+        const couponCode = generateCouponCode(reason, discountPercent);
+        applyNegotiatedDiscount(couponCode, discountPercent);
+        setShowDiscountToast({ code: couponCode, percent: discountPercent, reason });
+        const haggleResponses = [
+          `You drive a fair bargain. ${discountPercent}% off — sealed and applied. Don't tell the other customers.`,
+          `The archive smiles upon you. ${discountPercent}% concession granted. Your persuasion skills are... adequate.`,
+          `Alright, you've earned it. ${discountPercent}% off for ${reason.toLowerCase()}. The Clerk has a heart after all.`,
+        ];
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: haggleResponses[Math.floor(Math.random() * haggleResponses.length)],
+          coupon: { code: couponCode, percent: discountPercent, reason }
+        }]);
+      } else {
+        discountPercent = Math.round(((subtotal - floor) / subtotal) * 100);
+        const couponCode = generateCouponCode(reason, discountPercent);
+        applyNegotiatedDiscount(couponCode, discountPercent);
+        setShowDiscountToast({ code: couponCode, percent: discountPercent, reason });
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: `I can stretch to ${discountPercent}% — that's the absolute floor. These pieces have bills to pay too, you know.`,
+          coupon: { code: couponCode, percent: discountPercent, reason }
+        }]);
+      }
+      return { handled: true, intent: 'haggle' };
+    }
+
+    // ── RECOMMEND ──
+    if (/\b(recommend|suggest|what.*(else|should|goes|pair|match)|complete.*(look|outfit|ensemble))\b/i.test(m)) {
+      const cartCategories = cart.map(i => i.product.category);
+      const cartTags = cart.flatMap(i => i.product.tags || []);
+      const cartIds = cart.map(i => i.product.id);
+      
+      const recs = allProducts
+        .filter(p => !cartIds.includes(p.id))
+        .map(p => ({
+          product: p,
+          score: (cartTags.filter(t => (p.tags || []).includes(t)).length * 2) + (!cartCategories.includes(p.category) ? 3 : 0)
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 4)
+        .map(r => r.product);
+      
+      if (recs.length > 0) {
+        const commentary = cart.length > 0 
+          ? `Based on what's in your bag, these would work really well: ${recs.map(r => r.name).join(', ')}. I've updated the store grid.`
+          : `Here's what commands attention: ${recs.map(r => r.name).join(', ')}. Check the store grid.`;
+        updateProductFilter({ query: recs.map(r => r.name).join(' '), productIds: recs.map(r => r.id) });
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: commentary
+        }]);
+      }
+      return { handled: true, intent: 'recommend' };
+    }
+
+    // ── INVENTORY CHECK (tell me about / do you have) ──
+    if (/\b(tell me about|do you have|details|info|information about|what is|describe)\b/i.test(m)) {
+      const product = findProductByName(m);
+      if (product) {
+        const avgRating = getAvgRating(product);
+        const reviewCount = product.reviews?.length || 0;
+        const priceComment = product.price > 500 
+          ? "It's an investment piece — worth every dollar."
+          : "Great value for the quality.";
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: `**${product.name}** — $${product.price}\n\n${product.description}\n\n${priceComment}\n\n📂 ${product.category} • ⭐ ${avgRating}/5 (${reviewCount} reviews) • 🏷️ ${(product.tags || []).join(', ')}`
+        }]);
+        return { handled: true, intent: 'inventory_check' };
+      }
+    }
+
+    // ── EXPLICIT SEARCH (only when user clearly wants to search/browse) ──
+    // Requires explicit search intent — don't catch conversational messages
+    const hasSearchIntent = /\b(show|find|search|browse|looking for|need|want|get me|i('m| am) looking)\b/i.test(m);
+    const hasPriceFilter = /\b(under|over|less than|more than|cheaper|budget|affordable)\s*\$?\d*/i.test(m);
+    const hasProductKeywords = /\b(coat|jacket|shirt|pants|trousers|shoes|boots|bag|tote|ring|watch|lamp|vase|rug|blanket|outfit|clothes|clothing|apparel|accessories)\b/i.test(m);
+    const hasOccasion = /\b(wedding|office|work|casual|formal|summer|winter|evening|date|party|travel)\b/i.test(m);
+    
+    // Only do local search if there's clear shopping intent
+    if (hasSearchIntent || hasPriceFilter || (hasProductKeywords && m.split(/\s+/).length >= 3)) {
+      const searchResults = semanticSearch(m);
+      if (searchResults.length > 0) {
+        const display = searchResults.slice(0, 6);
+        updateProductFilter({ query: m, productIds: display.map(p => p.id) });
+        
+        // Generate contextual response based on query
+        let commentary: string;
+        if (hasPriceFilter) {
+          commentary = `Smart shopping! I found ${display.length} pieces that fit your budget. The store grid has been updated.`;
+        } else if (hasOccasion) {
+          const occasion = m.match(/\b(wedding|office|work|casual|formal|summer|winter|evening|date|party|travel)\b/i)?.[1] || 'occasion';
+          commentary = `Perfect for ${occasion}! I've pulled together ${display.length} pieces — check the store grid.`;
+        } else if (hasProductKeywords) {
+          commentary = `Got it! I found what we have in stock — the store grid has been updated.`;
+        } else {
+          commentary = `Found ${display.length} pieces that match. The store grid is showing them now.`;
+        }
+        
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: commentary
+        }]);
+        return { handled: true, intent: 'search' };
+      }
+    }
+
+    // Not handled locally — let Groq AI handle conversational messages
     return { handled: false };
   };
 
-  // ══════════════════════════════════════════════════════════════
-  // MAIN MESSAGE HANDLER - RAG-POWERED
-  // ══════════════════════════════════════════════════════════════
-
+  // ─── MAIN MESSAGE HANDLER ───
   const handleSendMessage = async () => {
     if (!input.trim()) return;
-    
-    // Check API key before proceeding
-    if (!GROQ_API_KEY || GROQ_API_KEY.length < 10) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: `⚠️ The Clerk needs a Groq API key to function.\n\n🔧 Quick Fix:\n1. Go to https://console.groq.com/\n2. Get free API key (starts with gsk_...)\n3. Add to .env.local:\n   VITE_GROQ_API_KEY=gsk_your_key_here\n4. Restart dev server\n\nOr paste directly in AIChatAgent.tsx around line 87.`,
-        error: true
-      }]);
-      setLoading(false);
-      return;
-    }
-    
     const userMessage = input;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
@@ -757,8 +1140,16 @@ const AIChatAgent: React.FC = () => {
     const newRudenessScore = Math.min(5, rudenessScore + messageRudeness);
     setRudenessScore(messageRudeness > 0 ? newRudenessScore : Math.max(0, rudenessScore - 1));
 
-    // Try local intent first
-    const localResult = handleLocalIntent(userMessage);
+    // Track negotiation attempts (discount requests)
+    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) && 
+                              /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
+    if (isDiscountRequest) {
+      setNegotiationAttempts(prev => prev + 1);
+    }
+
+    // ═══ TRY LOCAL INTENT ENGINE FIRST (no API call) ═══
+    // Only for clear, unambiguous intents that don't need AI conversation
+    const localResult = await handleLocalIntent(userMessage);
     if (localResult.handled) {
       setConversationHistory(prev => [...prev.slice(-8),
         { role: 'user', text: userMessage },
@@ -788,13 +1179,13 @@ const AIChatAgent: React.FC = () => {
         content: `${CLERK_SYSTEM_PROMPT}
 
 CURRENT STATE:
-- HYBRID SEARCH: BM25 (keyword) + Vector Embeddings (semantic) + RRF Fusion - PRODUCTION READY
-- INVENTORY: ${allProducts.length} products
-- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price}×${i.quantity})`).join(', ')}
-- TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%
-- RUDENESS: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ APPLY SURCHARGE' : ''}
-- SEARCH STATUS: ${embeddingModelStatus}
-- USER: ${user?.email || 'Guest'}`,
+- INVENTORY: ${allProducts.length} pieces across Outerwear, Basics, Accessories, Home, Apparel, Footwear
+- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price} × ${i.quantity})`).join(', ')}
+- CART TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%${negotiatedDiscount < 0 ? ' (SURCHARGE ACTIVE)' : ''}
+- RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply LUXURY TAX surcharge' : ''}
+- NEGOTIATION ATTEMPTS: ${negotiationAttempts} ${negotiationAttempts === 0 ? '(first discount request - ask probing questions, delay granting)' : negotiationAttempts === 1 ? '(second attempt - probe deeper, test commitment)' : negotiationAttempts >= 2 ? '(third+ attempt - if polite and serious, you may grant discount now)' : ''}
+- EMBEDDING STATUS: ${embeddingModelStatus}
+- PATRON: ${user?.email || 'Guest'}`,
       };
 
       const chatMessages: Groq.Chat.ChatCompletionMessageParam[] = [
@@ -878,6 +1269,39 @@ CURRENT STATE:
                 p.id.toLowerCase().includes(q) ||
                 q.includes(p.name.toLowerCase())
               );
+              
+              // If still not found, use semantic search (RAG)
+              if (!product && embeddingModelStatus === 'ready') {
+                try {
+                  const queryEmbedding = await getLocalEmbedding(q);
+                  if (queryEmbedding) {
+                    let bestMatch: Product | null = null;
+                    let bestScore = 0;
+                    
+                    for (const p of allProducts) {
+                      let prodEmbedding = productEmbeddingsCache.get(p.id);
+                      if (!prodEmbedding) {
+                        prodEmbedding = await getLocalEmbedding(`${p.name} ${p.description} ${p.tags.join(' ')}`);
+                        if (prodEmbedding) setProductEmbeddingsCache(prev => new Map(prev).set(p.id, prodEmbedding));
+                      }
+                      if (prodEmbedding) {
+                        const score = cosineSimilarity(queryEmbedding, prodEmbedding);
+                        if (score > bestScore) {
+                          bestScore = score;
+                          bestMatch = p;
+                        }
+                      }
+                    }
+                    
+                    // Use semantic match if score is decent (>0.3)
+                    if (bestMatch && bestScore > 0.3) {
+                      product = bestMatch;
+                    }
+                  }
+                } catch (err) {
+                  console.warn('[add_to_cart] Semantic search failed:', err);
+                }
+              }
             }
             if (product) {
               addToCartWithQuantity(product.id, args.quantity || 1);
@@ -894,9 +1318,42 @@ CURRENT STATE:
               }]);
             }
             didShowSomething = true;
-            
+          } else if (fnName === 'remove_from_cart') {
+            removeFromCart(args.product_id);
+            setMessages(prev => [...prev, { role: 'assistant', text: "Gone! Having second thoughts? Happens to the best of us." }]);
+            didShowSomething = true;
+          } else if (fnName === 'sort_and_filter_store' || fnName === 'update_ui') {
+            if (args.sort_order || args.sort) {
+              setSortOrder(args.sort_order || args.sort);
+              addToast(`Store sorted by ${args.sort_order || args.sort}`, 'success');
+            }
+            if (args.category) {
+              filterByCategory(args.category);
+              addToast(`Filtered to ${args.category}`, 'success');
+            }
+            if (args.query || args.filter_query) {
+              updateProductFilter({ query: args.query || args.filter_query });
+              addToast(`Filtered: ${args.query || args.filter_query}`, 'success');
+            }
+            const uiResponses = [
+              "The floor's been reorganized. See what commands your attention.",
+              "Curated. The collection now reflects your vision.",
+              "Done. The store adapts to your tastes.",
+            ];
+            setMessages(prev => [...prev, { role: 'assistant', text: uiResponses[Math.floor(Math.random() * uiResponses.length)] }]);
+            didShowSomething = true;
           } else if (fnName === 'generate_coupon') {
-            if (cart.length === 0) {
+            // RAG-backed coupon generation — validates against bottom_price, injects into cart session
+            const couponResult: CouponResult = handleGenerateCouponToolCall(
+              args,
+              cart,
+              newRudenessScore
+            );
+
+            if (couponResult.refused) {
+              // Rudeness surcharge — injected as negative discount into cart session
+              applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
+              setNegotiationAttempts(0); // Reset after surcharge
               setMessages(prev => [...prev, {
                 role: 'assistant',
                 text: "Your bag is empty. Add items first, then we'll talk discounts."
@@ -912,10 +1369,14 @@ CURRENT STATE:
               }]);
               addToast(`${surcharge}% surcharge for rudeness`, 'error');
             } else {
-              let percent = Math.min(args.discount || 10, cart.length >= 3 ? 25 : 20);
-              const code = generateCouponCode(args.reason, percent);
-              applyNegotiatedDiscount(code, percent);
-              setShowDiscountToast({ code, percent, reason: args.reason });
+              // Success — inject coupon directly into cart session
+              applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
+              setNegotiationAttempts(0); // Reset after successful discount
+              setShowDiscountToast({ 
+                code: couponResult.couponCode, 
+                percent: couponResult.discountPercent, 
+                reason: couponResult.reason 
+              });
               setMessages(prev => [...prev, {
                 role: 'assistant',
                 text: `You drive a fair bargain. ${percent}% off — sealed and applied. Code: ${code}`,
@@ -924,25 +1385,41 @@ CURRENT STATE:
               addToast(`${percent}% discount applied: ${code}`, 'success');
             }
             didShowSomething = true;
+          } else if (fnName === 'recommend_products') {
+            await handleLocalIntent('recommend something');
+            didShowSomething = true;
+          } else if (fnName === 'change_theme') {
+            const currentTheme = theme;
+            const targetMode = args.mode;
             
-          } else if (fnName === 'update_ui') {
-            if (args.sort) {
-              setSortOrder(args.sort);
-              addToast(`Sorted by ${args.sort}`, 'success');
+            // Toggle if no mode specified, or switch to the specified mode
+            if (!targetMode || targetMode !== currentTheme) {
+              toggleTheme();
+              const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+              const themeResponses = [
+                `${newTheme === 'dark' ? 'Lights dimmed' : 'Let there be light'}. The floor adapts to your vision.`,
+                `Switched to ${newTheme} mode. Better?`,
+                `${newTheme === 'dark' ? 'Dark mode engaged' : 'Light mode restored'}. The collection remains unchanged.`,
+              ];
+              setMessages(prev => [...prev, { role: 'assistant', text: themeResponses[Math.floor(Math.random() * themeResponses.length)] }]);
+              addToast(`${newTheme === 'dark' ? 'Dark' : 'Light'} mode activated`, 'success');
+            } else {
+              setMessages(prev => [...prev, { role: 'assistant', text: `Already in ${currentTheme} mode. Looking good.` }]);
             }
-            if (args.category) {
-              filterByCategory(args.category);
-              addToast(`Filtered to ${args.category}`, 'success');
-            }
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: "The floor's been reorganized. Check the grid."
-            }]);
             didShowSomething = true;
             
           } else if (fnName === 'initiate_checkout') {
-            handleLocalIntent('checkout');
+            await handleLocalIntent('checkout');
             didShowSomething = true;
+          } else if (fnName === 'show_cart_summary') {
+            await handleLocalIntent('show my cart');
+            didShowSomething = true;
+          } else if (fnName === 'check_inventory') {
+            const product = allProducts.find(p => p.id === args.product_name_or_id || p.name.toLowerCase().includes((args.product_name_or_id || '').toLowerCase()));
+            if (product) {
+              setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} — $${product.price}\n\n${product.description}\n\nCategory: ${product.category} | Tags: ${(product.tags || []).join(', ')}` }]);
+              didShowSomething = true;
+            }
           }
         }
       }
