@@ -4,6 +4,8 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import Groq from 'groq-sdk';
 import { Product } from '../types';
+import { getStripe } from '../lib/stripe';
+import checkoutHandler from '../api/checkout';
 import { getLocalEmbedding, cosineSimilarity, isEmbeddingModelReady } from '../lib/embeddings';
 import { CLERK_SYSTEM_PROMPT } from '../lib/clerkSystemPrompt';
 import { generateProductEmbeddings } from '../lib/ragSearch';
