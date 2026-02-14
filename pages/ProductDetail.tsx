@@ -293,7 +293,7 @@ const ProductDetail: React.FC = () => {
           <div className="space-y-6">
             <div className="flex justify-between items-start">
               <span className="text-[10px] uppercase tracking-[0.5em] text-gray-400 font-black">{product.category}</span>
-              {product.tags.includes('essential') && (
+              {(product.tags || []).includes('essential') && (
                 <span className="bg-black text-white text-[8px] uppercase tracking-widest px-2 py-1 font-black italic">Archive Essential</span>
               )}
             </div>
@@ -327,7 +327,7 @@ const ProductDetail: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap gap-2 pt-4">
-              {product.tags.map(tag => (
+              {(product.tags || []).map(tag => (
                 <span key={tag} className="text-[9px] uppercase tracking-[0.3em] px-4 py-2 bg-white border border-black/5 text-gray-400 font-black hover:text-black hover:border-black transition-all cursor-default">#{tag}</span>
               ))}
             </div>

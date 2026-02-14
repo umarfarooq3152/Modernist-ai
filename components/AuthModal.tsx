@@ -53,32 +53,32 @@ const AuthModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div 
-        className="absolute inset-0 bg-black/40 backdrop-blur-md" 
+        className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-md" 
         onClick={() => setAuthModalOpen(false)} 
       />
-      <div className="relative bg-white w-full max-w-md border border-black p-10 shadow-2xl animate-in fade-in zoom-in-95 duration-500">
+      <div className="relative bg-white dark:bg-neutral-900 w-full max-w-md border border-black dark:border-white/20 p-10 shadow-2xl animate-in fade-in zoom-in-95 duration-500">
         <button 
           onClick={() => setAuthModalOpen(false)}
-          className="absolute top-6 right-6 p-2 hover:bg-black hover:text-white transition-all"
+          className="absolute top-6 right-6 p-2 hover:bg-black hover:text-white dark:text-white dark:hover:bg-white dark:hover:text-black transition-all"
         >
           <X size={20} strokeWidth={1} />
         </button>
 
         <div className="text-center mb-10">
-          <p className="text-[10px] uppercase tracking-[0.4em] text-gray-400 mb-2 font-bold">The Atelier</p>
-          <h2 className="font-serif-elegant text-4xl font-bold uppercase tracking-tighter">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-gray-400 dark:text-gray-500 mb-2 font-bold">The Atelier</p>
+          <h2 className="font-serif-elegant text-4xl font-bold uppercase tracking-tighter text-black dark:text-white">
             {view === 'login' ? 'Identity' : view === 'register' ? 'Establishment' : 'Recovery'}
           </h2>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-[10px] uppercase tracking-widest font-bold">
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 text-[10px] uppercase tracking-widest font-bold">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-100 text-green-700 text-[10px] uppercase tracking-widest font-bold flex items-center">
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/30 border border-green-100 dark:border-green-900/50 text-green-700 dark:text-green-400 text-[10px] uppercase tracking-widest font-bold flex items-center">
             <Check size={14} className="mr-2" />
             {success}
           </div>
@@ -89,9 +89,9 @@ const AuthModal: React.FC = () => {
             <button 
               onClick={loginWithGoogle}
               disabled={loading}
-              className="w-full flex items-center justify-center space-x-4 border border-black py-4 hover:bg-black hover:text-white transition-all group disabled:opacity-50"
+              className="w-full flex items-center justify-center space-x-4 border border-black dark:border-white py-4 text-black dark:text-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all group disabled:opacity-50"
             >
-              <div className="w-5 h-5 bg-black group-hover:bg-white transition-colors rounded-full" />
+              <div className="w-5 h-5 bg-black dark:bg-white group-hover:bg-white dark:group-hover:bg-black transition-colors rounded-full" />
               <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Sync with Google (OAuth)</span>
             </button>
           )}
@@ -99,10 +99,10 @@ const AuthModal: React.FC = () => {
           {view !== 'forgot' && (
             <div className="relative py-4">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-black/10"></div>
+                <div className="w-full border-t border-black/10 dark:border-white/10"></div>
               </div>
               <div className="relative flex justify-center">
-                <span className="bg-white px-4 text-[8px] uppercase tracking-widest text-gray-300 font-bold">Or</span>
+                <span className="bg-white dark:bg-neutral-900 px-4 text-[8px] uppercase tracking-widest text-gray-300 dark:text-gray-600 font-bold">Or</span>
               </div>
             </div>
           )}
@@ -115,7 +115,7 @@ const AuthModal: React.FC = () => {
                 placeholder="FULL NAME" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full border-b border-black/10 focus:border-black outline-none py-3 text-[10px] uppercase tracking-widest bg-transparent transition-colors placeholder:text-gray-300"
+                className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-[10px] uppercase tracking-widest bg-transparent text-black dark:text-white transition-colors placeholder:text-gray-300 dark:placeholder:text-gray-600"
               />
             )}
             <input 
@@ -124,7 +124,7 @@ const AuthModal: React.FC = () => {
               placeholder="EMAIL ADDRESS" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border-b border-black/10 focus:border-black outline-none py-3 text-[10px] uppercase tracking-widest bg-transparent transition-colors placeholder:text-gray-300"
+              className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-[10px] uppercase tracking-widest bg-transparent text-black dark:text-white transition-colors placeholder:text-gray-300 dark:placeholder:text-gray-600"
             />
             {view !== 'forgot' && (
               <input 
@@ -133,32 +133,32 @@ const AuthModal: React.FC = () => {
                 placeholder="PASSWORD" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border-b border-black/10 focus:border-black outline-none py-3 text-[10px] uppercase tracking-widest bg-transparent transition-colors placeholder:text-gray-300"
+                className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-[10px] uppercase tracking-widest bg-transparent text-black dark:text-white transition-colors placeholder:text-gray-300 dark:placeholder:text-gray-600"
               />
             )}
 
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-white py-5 text-[10px] uppercase tracking-[0.3em] font-bold hover:bg-white hover:text-black border border-black transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
+              className="w-full bg-black dark:bg-white text-white dark:text-black py-5 text-[10px] uppercase tracking-[0.3em] font-bold hover:bg-white hover:text-black dark:hover:bg-transparent dark:hover:text-white border border-black dark:border-white transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
             >
               <span>{loading ? 'Archiving...' : view === 'login' ? 'Authorize' : view === 'register' ? 'Register' : 'Send Instructions'}</span>
               {!loading && <ArrowRight size={14} />}
             </button>
           </form>
 
-          <div className="flex flex-col space-y-4 pt-4 border-t border-black/5">
+          <div className="flex flex-col space-y-4 pt-4 border-t border-black/5 dark:border-white/5">
             {view === 'login' ? (
               <>
                 <button 
                   onClick={() => handleSwitchView('register')}
-                  className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-black transition-colors text-center"
+                  className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-black dark:hover:text-white transition-colors text-center"
                 >
                   New to MODERNIST? Establish Account
                 </button>
                 <button 
                   onClick={() => handleSwitchView('forgot')}
-                  className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-black transition-colors text-center"
+                  className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-black dark:hover:text-white transition-colors text-center"
                 >
                   Forgot your credentials?
                 </button>
@@ -166,7 +166,7 @@ const AuthModal: React.FC = () => {
             ) : (
               <button 
                 onClick={() => handleSwitchView('login')}
-                className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-black transition-colors text-center"
+                className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-black dark:hover:text-white transition-colors text-center"
               >
                 Return to Login
               </button>
@@ -174,14 +174,14 @@ const AuthModal: React.FC = () => {
             
             <button 
               onClick={() => setAuthModalOpen(false)}
-              className="text-[9px] uppercase tracking-[0.2em] text-black font-black hover:opacity-50 transition-opacity text-center"
+              className="text-[9px] uppercase tracking-[0.2em] text-black dark:text-white font-black hover:opacity-50 transition-opacity text-center"
             >
               Proceed as Guest
             </button>
           </div>
         </div>
 
-        <p className="mt-12 text-[8px] uppercase tracking-widest text-center text-gray-400 leading-loose">
+        <p className="mt-12 text-[8px] uppercase tracking-widest text-center text-gray-400 dark:text-gray-500 leading-loose">
           By interacting, you enter the MODERNIST archive and agree to our curator terms.
         </p>
       </div>
