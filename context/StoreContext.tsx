@@ -46,6 +46,7 @@ interface StoreContextValue extends StoreState {
   logClerkInteraction: (log: Partial<ClerkLog>) => Promise<void>;
   fetchUserOrders: (userId: string) => Promise<OrderRecord[]>;
   fetchUserReviews: (userId: string) => Promise<Review[]>;
+  submitReview: (productId: string, rating: number, text: string, userId: string, userName: string) => Promise<boolean>;
   toggleTheme: () => void;
 }
 
@@ -486,6 +487,34 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, []);
 
+  const submitReview = useCallback(async (productId: string, rating: number, text: string, userId: string, userName: string) => {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .insert({
+          product_id: productId,
+          user_id: userId,
+          author: userName,
+          rating: rating,
+          text: text,
+          date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        });
+
+      if (error) {
+        console.error('Failed to submit review:', error);
+        addToast('Failed to submit review', 'error');
+        return false;
+      }
+
+      addToast('Review submitted successfully', 'success');
+      return true;
+    } catch (e) {
+      console.error('Error submitting review:', e);
+      addToast('Failed to submit review', 'error');
+      return false;
+    }
+  }, [addToast]);
+
   const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
 
   const value = {
@@ -493,7 +522,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
-    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, toggleTheme
+    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, toggleTheme
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
