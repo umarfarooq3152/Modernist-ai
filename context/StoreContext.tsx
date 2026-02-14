@@ -48,11 +48,13 @@ interface StoreContextValue extends StoreState {
   fetchUserReviews: (userId: string) => Promise<Review[]>;
   submitReview: (productId: string, rating: number, text: string, userId: string, userName: string) => Promise<boolean>;
   toggleTheme: () => void;
+  lockCart: () => void;
+  unlockCart: () => void;
 }
 
 const initialState: StoreState = {
-  products: productsData,
-  allProducts: productsData,
+  products: [],
+  allProducts: [],
   cart: [],
   isCartOpen: false,
   isSearchOpen: false,
@@ -63,6 +65,7 @@ const initialState: StoreState = {
   sortOrder: 'relevance',
   lastAddedProduct: null,
   theme: 'light',
+  isCartLocked: false,
 };
 
 const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
@@ -207,6 +210,10 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       return { ...state, lastAddedProduct: null };
     case 'TOGGLE_THEME':
       return { ...state, theme: state.theme === 'light' ? 'dark' : 'light' };
+    case 'LOCK_CART':
+      return { ...state, isCartLocked: true };
+    case 'UNLOCK_CART':
+      return { ...state, isCartLocked: false };
     default:
       return state;
   }
@@ -539,6 +546,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [addToast]);
 
   const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
+  const lockCart = useCallback(() => dispatch({ type: 'LOCK_CART' }), []);
+  const unlockCart = useCallback(() => dispatch({ type: 'UNLOCK_CART' }), []);
 
   const value = {
     ...state, cartSubtotal, cartTotal, synergyDiscount, activeVibe, isCurating, isInitialLoading, toasts, quickViewProduct, isSyncingERP,

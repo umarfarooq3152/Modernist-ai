@@ -78,6 +78,7 @@ export interface StoreState {
   sortOrder: SortOrder;
   lastAddedProduct: Product | null;
   theme: 'light' | 'dark';
+  isCartLocked: boolean;
 }
 
 export type StoreAction = 
@@ -97,4 +98,6 @@ export type StoreAction =
   | { type: 'SET_MOOD'; payload: UserMood }
   | { type: 'CLEAR_CART' }
   | { type: 'CLEAR_LAST_ADDED' }
-  | { type: 'TOGGLE_THEME' };
+  | { type: 'TOGGLE_THEME' }
+  | { type: 'LOCK_CART' }
+  | { type: 'UNLOCK_CART' };
