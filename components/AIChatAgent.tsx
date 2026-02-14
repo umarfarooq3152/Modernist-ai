@@ -4,8 +4,6 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import Groq from 'groq-sdk';
 import { Product } from '../types';
-import { getStripe } from '../lib/stripe';
-import checkoutHandler from '../api/checkout';
 import { getLocalEmbedding, cosineSimilarity, isEmbeddingModelReady } from '../lib/embeddings';
 import { CLERK_SYSTEM_PROMPT } from '../lib/clerkSystemPrompt';
 import { generateProductEmbeddings } from '../lib/ragSearch';
@@ -40,7 +38,7 @@ class BM25Ranker {
   private avgDocLength = 0;
   private idf: Map<string, number> = new Map();
   private docFrequencies: Map<string, number> = new Map();
-
+  
   constructor(private documents: { id: string; text: string }[]) {
     this.buildIndex();
   }
@@ -61,7 +59,7 @@ class BM25Ranker {
     this.documents.forEach(doc => {
       const tokens = this.tokenize(doc.text);
       docLengths.push(tokens.length);
-
+      
       const uniqueTokens = new Set(tokens);
       uniqueTokens.forEach(token => {
         if (!termDocCounts.has(token)) {
@@ -89,7 +87,7 @@ class BM25Ranker {
     this.documents.forEach(doc => {
       const docTokens = this.tokenize(doc.text);
       const docLength = docTokens.length;
-
+      
       // Count term frequencies
       const termFreqs = new Map<string, number>();
       docTokens.forEach(token => {
@@ -100,11 +98,11 @@ class BM25Ranker {
       queryTokens.forEach(token => {
         const tf = termFreqs.get(token) || 0;
         const idf = this.idf.get(token) || 0;
-
+        
         // BM25 formula
         const numerator = tf * (this.k1 + 1);
         const denominator = tf + this.k1 * (1 - this.b + this.b * (docLength / this.avgDocLength));
-
+        
         score += idf * (numerator / denominator);
       });
 
@@ -192,7 +190,7 @@ const AIChatAgent: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isRetrieving, setIsRetrieving] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [showDiscountToast, setShowDiscountToast] = useState<{ code: string, percent: number, reason: string } | null>(null);
+  const [showDiscountToast, setShowDiscountToast] = useState<{code: string, percent: number, reason: string} | null>(null);
   const [userSelfie, setUserSelfie] = useState<string | null>(null);
   const [isProcessingTryOn, setIsProcessingTryOn] = useState(false);
   const [workingModel, setWorkingModel] = useState<string>(MODEL_FALLBACK_CHAIN[0]);
@@ -202,32 +200,32 @@ const AIChatAgent: React.FC = () => {
   const [productEmbeddingsCache, setProductEmbeddingsCache] = useState<Map<string, number[]>>(new Map());
   const [embeddingModelStatus, setEmbeddingModelStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [bm25Index, setBm25Index] = useState<BM25Ranker | null>(null);
-
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const {
+  
+  const { 
     allProducts, cart, addToCartWithQuantity, openCart, lastAddedProduct, clearLastAdded,
-    updateProductFilter, applyNegotiatedDiscount, negotiatedDiscount, cartTotal, cartSubtotal, addToast,
+    updateProductFilter, applyNegotiatedDiscount, negotiatedDiscount, cartTotal, cartSubtotal, addToast, 
     logClerkInteraction, setSortOrder, removeFromCart, filterByCategory, toggleTheme, theme
   } = useStore();
 
   const { user } = useAuth();
-
+  
   // ══════════════════════════════════════════════════════════════
   // RAG INITIALIZATION - Build Hybrid Search Indexes
   // ══════════════════════════════════════════════════════════════
-
+  
   useEffect(() => {
     if (!isOpen || productEmbeddingsCache.size > 0) return;
-
+    
     const initializeRAG = async () => {
       console.log('[RAG] Initializing hybrid search system...');
       const startTime = Date.now();
-
+      
       try {
         setEmbeddingModelStatus('loading');
-
+        
         // STAGE 1: Build BM25 Index (keyword search)
         console.log('[RAG] Building BM25 keyword index...');
         const bm25Docs = allProducts.map(p => ({
@@ -237,17 +235,17 @@ const AIChatAgent: React.FC = () => {
         const bm25 = new BM25Ranker(bm25Docs);
         setBm25Index(bm25);
         console.log(`[RAG] ✓ BM25 index built: ${allProducts.length} products`);
-
+        
         // STAGE 2: Generate Vector Embeddings (semantic search)
         console.log('[RAG] Generating vector embeddings...');
         const cache = await generateProductEmbeddings(allProducts);
         setProductEmbeddingsCache(cache);
         console.log(`[RAG] ✓ Vector embeddings cached: ${cache.size} products`);
-
+        
         setEmbeddingModelStatus('ready');
         const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
         console.log(`[RAG] ✅ Hybrid search ready in ${elapsedTime}s`);
-
+        
         addToast('AI search engine initialized', 'success');
       } catch (err) {
         console.error('[RAG] Initialization failed:', err);
@@ -255,14 +253,14 @@ const AIChatAgent: React.FC = () => {
         addToast('Search engine degraded mode', 'warning');
       }
     };
-
+    
     initializeRAG();
   }, [isOpen, allProducts]);
 
   // ══════════════════════════════════════════════════════════════
   // HYBRID SEARCH FUNCTION - THE CORE RAG RETRIEVAL
   // ══════════════════════════════════════════════════════════════
-
+  
   const hybridSearch = async (
     query: string,
     options: {
@@ -282,17 +280,17 @@ const AIChatAgent: React.FC = () => {
   }> => {
     const startTime = Date.now();
     const { category, minPrice, maxPrice, maxResults = 10 } = options;
-
+    
     try {
       console.log(`[HYBRID SEARCH] Query: "${query}"`);
-
+      
       // STAGE 1: BM25 Keyword Search (fast exact matching)
       let keywordResults: { id: string; score: number }[] = [];
       if (bm25Index) {
         keywordResults = bm25Index.search(query, maxResults * 2);
         console.log(`[BM25] Found ${keywordResults.length} keyword matches`);
       }
-
+      
       // STAGE 2: Vector Semantic Search (meaning-based)
       let vectorResults: { id: string; score: number }[] = [];
       if (embeddingModelStatus === 'ready' && productEmbeddingsCache.size > 0) {
@@ -308,7 +306,7 @@ const AIChatAgent: React.FC = () => {
               .filter(ps => ps.score >= 0.3) // Similarity threshold
               .sort((a, b) => b.score - a.score)
               .slice(0, maxResults * 2);
-
+            
             vectorResults = productScores;
             console.log(`[VECTOR] Found ${vectorResults.length} semantic matches`);
           }
@@ -316,11 +314,11 @@ const AIChatAgent: React.FC = () => {
           console.warn('[VECTOR] Embedding generation failed:', embErr);
         }
       }
-
+      
       // STAGE 3: Reciprocal Rank Fusion (merge results)
       let fusedResults: { id: string; score: number }[] = [];
       let method: 'hybrid' | 'vector' | 'keyword' | 'fallback' = 'fallback';
-
+      
       if (vectorResults.length > 0 && keywordResults.length > 0) {
         fusedResults = reciprocalRankFusion(vectorResults, keywordResults);
         method = 'hybrid';
@@ -344,32 +342,32 @@ const AIChatAgent: React.FC = () => {
         fusedResults = fallbackProducts.map((p, i) => ({ id: p.id, score: 1 / (i + 1) }));
         method = 'fallback';
       }
-
+      
       // STAGE 4: Apply Metadata Filters (price, category)
       let filteredProducts = fusedResults
         .map(r => allProducts.find(p => p.id === r.id))
         .filter((p): p is Product => p !== undefined);
-
+      
       if (category && category !== 'All') {
-        filteredProducts = filteredProducts.filter(p =>
+        filteredProducts = filteredProducts.filter(p => 
           p.category.toLowerCase() === category.toLowerCase()
         );
       }
-
+      
       if (minPrice !== undefined) {
         filteredProducts = filteredProducts.filter(p => p.price >= minPrice);
       }
-
+      
       if (maxPrice !== undefined) {
         filteredProducts = filteredProducts.filter(p => p.price <= maxPrice);
       }
-
+      
       // STAGE 5: Return top results
       const finalProducts = filteredProducts.slice(0, maxResults);
       const searchTime = Date.now() - startTime;
-
+      
       console.log(`[HYBRID SEARCH] ✓ Returned ${finalProducts.length} products in ${searchTime}ms (${method})`);
-
+      
       return {
         products: finalProducts,
         metadata: {
@@ -379,11 +377,11 @@ const AIChatAgent: React.FC = () => {
           keywordMatches: keywordResults.length,
         }
       };
-
+      
     } catch (error) {
       console.error('[HYBRID SEARCH] Error:', error);
       const searchTime = Date.now() - startTime;
-
+      
       // Emergency fallback
       const emergencyResults = allProducts
         .filter(p => {
@@ -391,7 +389,7 @@ const AIChatAgent: React.FC = () => {
           return text.includes(query.toLowerCase());
         })
         .slice(0, maxResults);
-
+      
       return {
         products: emergencyResults,
         metadata: {
@@ -407,7 +405,7 @@ const AIChatAgent: React.FC = () => {
   // ══════════════════════════════════════════════════════════════
   // AUTO-SCROLL
   // ══════════════════════════════════════════════════════════════
-
+  
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -417,7 +415,7 @@ const AIChatAgent: React.FC = () => {
   // ══════════════════════════════════════════════════════════════
   // PERFECT PAIR RECOMMENDATIONS
   // ══════════════════════════════════════════════════════════════
-
+  
   useEffect(() => {
     if (lastAddedProduct && isOpen && messages.length > 0) {
       triggerPerfectPairRecommendation(lastAddedProduct);
@@ -433,12 +431,12 @@ const AIChatAgent: React.FC = () => {
     } else {
       document.body.style.overflow = 'unset';
     }
-
+    
     // Reset negotiation when chat is reopened
     if (isOpen) {
       setNegotiationAttempts(0);
     }
-
+    
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
@@ -704,59 +702,59 @@ const AIChatAgent: React.FC = () => {
 
   const semanticSearch = (query: string, category?: string): Product[] => {
     try {
-      const q = query.toLowerCase();
+    const q = query.toLowerCase();
+    
+    // Keyword expansion map for vibe-based search
+    const vibeMap: Record<string, string[]> = {
+      summer: ['summer', 'linen', 'light', 'breathable', 'relaxed', 'casual'],
+      wedding: ['formal', 'elegant', 'essential', 'classic', 'smart', 'evening'],
+      winter: ['winter', 'wool', 'down', 'warm', 'shearling', 'outerwear'],
+      office: ['office', 'formal', 'tailoring', 'smart', 'classic', 'staple'],
+      casual: ['casual', 'relaxed', 'staple', 'heritage', 'rugged'],
+      luxury: ['luxury', 'premium', 'leather', 'cashmere', 'statement', 'large'],
+      minimalist: ['minimalist', 'modern', 'essential', 'functional', 'art'],
+      gift: ['gift', 'accessory', 'jewelry', 'color', 'art', 'functional'],
+      travel: ['travel', 'leather', 'functional', 'performance', 'technical'],
+      evening: ['evening', 'smart', 'formal', 'elegant', 'jewelry'],
+      italy: ['summer', 'linen', 'light', 'relaxed', 'casual', 'classic', 'smart'],
+    };
 
-      // Keyword expansion map for vibe-based search
-      const vibeMap: Record<string, string[]> = {
-        summer: ['summer', 'linen', 'light', 'breathable', 'relaxed', 'casual'],
-        wedding: ['formal', 'elegant', 'essential', 'classic', 'smart', 'evening'],
-        winter: ['winter', 'wool', 'down', 'warm', 'shearling', 'outerwear'],
-        office: ['office', 'formal', 'tailoring', 'smart', 'classic', 'staple'],
-        casual: ['casual', 'relaxed', 'staple', 'heritage', 'rugged'],
-        luxury: ['luxury', 'premium', 'leather', 'cashmere', 'statement', 'large'],
-        minimalist: ['minimalist', 'modern', 'essential', 'functional', 'art'],
-        gift: ['gift', 'accessory', 'jewelry', 'color', 'art', 'functional'],
-        travel: ['travel', 'leather', 'functional', 'performance', 'technical'],
-        evening: ['evening', 'smart', 'formal', 'elegant', 'jewelry'],
-        italy: ['summer', 'linen', 'light', 'relaxed', 'casual', 'classic', 'smart'],
-      };
+    // Expand query with vibe keywords
+    let searchTerms = q.split(/\s+/).filter(w => w.length > 2);
+    for (const [vibe, extra] of Object.entries(vibeMap)) {
+      if (q.includes(vibe)) searchTerms = [...searchTerms, ...extra];
+    }
+    searchTerms = [...new Set(searchTerms)];
 
-      // Expand query with vibe keywords
-      let searchTerms = q.split(/\s+/).filter(w => w.length > 2);
-      for (const [vibe, extra] of Object.entries(vibeMap)) {
-        if (q.includes(vibe)) searchTerms = [...searchTerms, ...extra];
-      }
-      searchTerms = [...new Set(searchTerms)];
+    let results = allProducts.filter(p => {
+      const matchesCategory = !category || category === 'All' || (p.category || '').toLowerCase() === category.toLowerCase();
+      if (!matchesCategory) return false;
+      
+      const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
+      return searchTerms.some(term => text.includes(term));
+    });
 
-      let results = allProducts.filter(p => {
-        const matchesCategory = !category || category === 'All' || (p.category || '').toLowerCase() === category.toLowerCase();
-        if (!matchesCategory) return false;
+    // Price filtering
+    const priceMatch = q.match(/under\s*\$?(\d+)/i);
+    if (priceMatch) {
+      const maxPrice = parseInt(priceMatch[1]);
+      results = (results.length > 0 ? results : allProducts).filter(p => p.price <= maxPrice);
+    }
+    const overMatch = q.match(/over\s*\$?(\d+)/i);
+    if (overMatch) {
+      const minPrice = parseInt(overMatch[1]);
+      results = (results.length > 0 ? results : allProducts).filter(p => p.price >= minPrice);
+    }
 
+    // If nothing matched, try individual word matching against all products
+    if (results.length === 0) {
+      results = allProducts.filter(p => {
         const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
-        return searchTerms.some(term => text.includes(term));
+        return searchTerms.some(t => text.includes(t));
       });
-
-      // Price filtering
-      const priceMatch = q.match(/under\s*\$?(\d+)/i);
-      if (priceMatch) {
-        const maxPrice = parseInt(priceMatch[1]);
-        results = (results.length > 0 ? results : allProducts).filter(p => p.price <= maxPrice);
-      }
-      const overMatch = q.match(/over\s*\$?(\d+)/i);
-      if (overMatch) {
-        const minPrice = parseInt(overMatch[1]);
-        results = (results.length > 0 ? results : allProducts).filter(p => p.price >= minPrice);
-      }
-
-      // If nothing matched, try individual word matching against all products
-      if (results.length === 0) {
-        results = allProducts.filter(p => {
-          const text = `${p.name || ''} ${p.description || ''} ${(p.tags || []).join(' ')} ${p.category || ''}`.toLowerCase();
-          return searchTerms.some(t => text.includes(t));
-        });
-      }
-
-      return results;
+    }
+    
+    return results;
     } catch (e) {
       console.error('[semanticSearch] crashed:', e);
       return [];
@@ -765,8 +763,8 @@ const AIChatAgent: React.FC = () => {
 
   const findProductByName = (input: string): Product | undefined => {
     const q = input.toLowerCase();
-    return allProducts.find(p =>
-      q.includes(p.name.toLowerCase()) ||
+    return allProducts.find(p => 
+      q.includes(p.name.toLowerCase()) || 
       p.name.toLowerCase().includes(q) ||
       p.id === q
     );
@@ -811,9 +809,9 @@ const AIChatAgent: React.FC = () => {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty. Let me show you pieces that earn their place in your life." }]);
       } else {
         const itemCount = cart.reduce((sum, i) => sum + i.quantity, 0);
-        const commentary = itemCount >= 3
+        const commentary = itemCount >= 3 
           ? "Looking like a proper haul! Excellent taste."
-          : itemCount === 1
+          : itemCount === 1 
             ? "Just the one piece? I respect the minimalism, but there's room for a complementary item..."
             : "A solid start. These pieces actually work really well together.";
         setMessages(prev => [...prev, {
@@ -897,7 +895,7 @@ const AIChatAgent: React.FC = () => {
     const addMatch = m.match(/\b(add|buy|get|want|grab|i('ll| will) take)\b/i);
     if (addMatch) {
       let product = findProductByName(m);
-
+      
       // If not found with simple matching, try semantic search
       if (!product && embeddingModelStatus === 'ready') {
         const cleanQuery = m.replace(/\b(add|buy|get|want|grab|i('ll| will) take|to|my|the|a|an|please|cart|bag)\b/gi, '').trim();
@@ -907,7 +905,7 @@ const AIChatAgent: React.FC = () => {
             if (queryEmbedding) {
               let bestMatch: Product | null = null;
               let bestScore = 0;
-
+              
               for (const p of allProducts) {
                 let prodEmbedding = productEmbeddingsCache.get(p.id);
                 if (!prodEmbedding) {
@@ -922,7 +920,7 @@ const AIChatAgent: React.FC = () => {
                   }
                 }
               }
-
+              
               if (bestMatch && bestScore > 0.3) {
                 product = bestMatch;
               }
@@ -932,7 +930,7 @@ const AIChatAgent: React.FC = () => {
           }
         }
       }
-
+      
       if (product) {
         const qtyMatch = m.match(/(\d+)\s*(of|x|×|quantity|quantities|qty|pcs?|pieces?|items?)\b/i) || m.match(/\b(quantity|quantities|qty)\s*(\d+)/i);
         const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2]) : 1;
@@ -951,7 +949,7 @@ const AIChatAgent: React.FC = () => {
           .sort(() => Math.random() - 0.5).slice(0, 2);
         if (complementary.length > 0) {
           setTimeout(() => setMessages(prev => [...prev, {
-            role: 'assistant',
+            role: 'assistant', 
             text: `By the way, these pair really well with that: ${complementary.map(c => c.name).join(', ')}. Check the store.`
           }]), 800);
         }
@@ -974,7 +972,7 @@ const AIChatAgent: React.FC = () => {
       const msgRudeness = detectRudeness(m);
       const newRudenessScore = msgRudeness > 0 ? rudenessScore + msgRudeness : Math.max(0, rudenessScore - 1);
       setRudenessScore(newRudenessScore);
-
+      
       if (cart.length === 0) {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty — add some pieces first and then we can talk numbers. I don't negotiate in hypotheticals." }]);
         return { handled: true, intent: 'haggle_empty' };
@@ -1002,16 +1000,16 @@ const AIChatAgent: React.FC = () => {
       // Determine discount based on reason
       const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
       const floor = cart.reduce((sum, item) => sum + (item.product.bottom_price * item.quantity), 0);
-
+      
       let discountPercent = 10; // default
       let reason = "Loyal patron";
-
+      
       if (/birthday|bday/i.test(m)) { discountPercent = 20; reason = "Birthday celebration"; }
       else if (/student/i.test(m)) { discountPercent = 15; reason = "Student patron"; }
       else if (/buying (two|2|three|3|multiple|several)/i.test(m) || cart.length >= 2) { discountPercent = 15; reason = "Bulk acquisition"; }
       else if (/loyal|regular|returning/i.test(m)) { discountPercent = 15; reason = "Loyal patron"; }
       else if (/military|veteran|service/i.test(m)) { discountPercent = 20; reason = "Service honor"; }
-
+      
       discountPercent = Math.min(discountPercent, cart.length >= 3 ? 25 : 20);
 
       const discountedTotal = Math.round(subtotal * (1 - discountPercent / 100));
@@ -1048,7 +1046,7 @@ const AIChatAgent: React.FC = () => {
       const cartCategories = cart.map(i => i.product.category);
       const cartTags = cart.flatMap(i => i.product.tags || []);
       const cartIds = cart.map(i => i.product.id);
-
+      
       const recs = allProducts
         .filter(p => !cartIds.includes(p.id))
         .map(p => ({
@@ -1058,9 +1056,9 @@ const AIChatAgent: React.FC = () => {
         .sort((a, b) => b.score - a.score)
         .slice(0, 4)
         .map(r => r.product);
-
+      
       if (recs.length > 0) {
-        const commentary = cart.length > 0
+        const commentary = cart.length > 0 
           ? `Based on what's in your bag, these would work really well: ${recs.map(r => r.name).join(', ')}. I've updated the store grid.`
           : `Here's what commands attention: ${recs.map(r => r.name).join(', ')}. Check the store grid.`;
         updateProductFilter({ query: recs.map(r => r.name).join(' '), productIds: recs.map(r => r.id) });
@@ -1078,7 +1076,7 @@ const AIChatAgent: React.FC = () => {
       if (product) {
         const avgRating = getAvgRating(product);
         const reviewCount = product.reviews?.length || 0;
-        const priceComment = product.price > 500
+        const priceComment = product.price > 500 
           ? "It's an investment piece — worth every dollar."
           : "Great value for the quality.";
         setMessages(prev => [...prev, {
@@ -1095,14 +1093,14 @@ const AIChatAgent: React.FC = () => {
     const hasPriceFilter = /\b(under|over|less than|more than|cheaper|budget|affordable)\s*\$?\d*/i.test(m);
     const hasProductKeywords = /\b(coat|jacket|shirt|pants|trousers|shoes|boots|bag|tote|ring|watch|lamp|vase|rug|blanket|outfit|clothes|clothing|apparel|accessories)\b/i.test(m);
     const hasOccasion = /\b(wedding|office|work|casual|formal|summer|winter|evening|date|party|travel)\b/i.test(m);
-
+    
     // Only do local search if there's clear shopping intent
     if (hasSearchIntent || hasPriceFilter || (hasProductKeywords && m.split(/\s+/).length >= 3)) {
       const searchResults = semanticSearch(m);
       if (searchResults.length > 0) {
         const display = searchResults.slice(0, 6);
         updateProductFilter({ query: m, productIds: display.map(p => p.id) });
-
+        
         // Generate contextual response based on query
         let commentary: string;
         if (hasPriceFilter) {
@@ -1115,7 +1113,7 @@ const AIChatAgent: React.FC = () => {
         } else {
           commentary = `Found ${display.length} pieces that match. The store grid is showing them now.`;
         }
-
+        
         setMessages(prev => [...prev, {
           role: 'assistant',
           text: commentary
@@ -1141,8 +1139,8 @@ const AIChatAgent: React.FC = () => {
     setRudenessScore(messageRudeness > 0 ? newRudenessScore : Math.max(0, rudenessScore - 1));
 
     // Track negotiation attempts (discount requests)
-    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) &&
-      /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
+    const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(down|lower|break|reduction)|can.*(get|have).*(off|deal|discount)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion)\b/i.test(userMessage) && 
+                              /\b(discount|deal|off|coupon|cheaper|price|birthday|student)\b/i.test(userMessage);
     if (isDiscountRequest) {
       setNegotiationAttempts(prev => prev + 1);
     }
@@ -1152,8 +1150,8 @@ const AIChatAgent: React.FC = () => {
     const localResult = await handleLocalIntent(userMessage);
     if (localResult.handled) {
       setConversationHistory(prev => [...prev.slice(-8),
-      { role: 'user', text: userMessage },
-      { role: 'assistant', text: `[local:${localResult.intent}]` }
+        { role: 'user', text: userMessage },
+        { role: 'assistant', text: `[local:${localResult.intent}]` }
       ]);
       logClerkInteraction({
         user_id: user?.id, user_email: user?.email,
@@ -1209,12 +1207,12 @@ CURRENT STATE:
         for (const toolCall of message.tool_calls) {
           const fnName = toolCall.function.name;
           let args: any = {};
-          try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { }
+          try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch(e) {}
 
           if (fnName === 'search_inventory') {
             // ═══ HYBRID SEARCH TOOL - THE MAGIC HAPPENS HERE ═══
             const searchStartTime = Date.now();
-
+            
             const { products, metadata } = await hybridSearch(args.query, {
               category: args.category,
               minPrice: args.min_price,
@@ -1241,7 +1239,7 @@ CURRENT STATE:
                 `Curated ${products.length} results via ${metadata.method} search in ${metadata.searchTime}ms:`,
                 `${products.length} matches from the archive (${metadata.vectorMatches} semantic + ${metadata.keywordMatches} keyword):`,
               ];
-
+              
               setMessages(prev => [...prev, {
                 role: 'assistant',
                 text: searchResponses[Math.floor(Math.random() * searchResponses.length)],
@@ -1259,7 +1257,7 @@ CURRENT STATE:
               addToast(`${products.length} results for "${args.query}" (${metadata.method})`, 'success');
             }
             didShowSomething = true;
-
+            
           } else if (fnName === 'add_to_cart') {
             let product = allProducts.find(p => p.id === args.product_id);
             if (!product) {
@@ -1269,7 +1267,7 @@ CURRENT STATE:
                 p.id.toLowerCase().includes(q) ||
                 q.includes(p.name.toLowerCase())
               );
-
+              
               // If still not found, use semantic search (RAG)
               if (!product && embeddingModelStatus === 'ready') {
                 try {
@@ -1277,7 +1275,7 @@ CURRENT STATE:
                   if (queryEmbedding) {
                     let bestMatch: Product | null = null;
                     let bestScore = 0;
-
+                    
                     for (const p of allProducts) {
                       let prodEmbedding = productEmbeddingsCache.get(p.id);
                       if (!prodEmbedding) {
@@ -1292,7 +1290,7 @@ CURRENT STATE:
                         }
                       }
                     }
-
+                    
                     // Use semantic match if score is decent (>0.3)
                     if (bestMatch && bestScore > 0.3) {
                       product = bestMatch;
@@ -1372,10 +1370,10 @@ CURRENT STATE:
               // Success — inject coupon directly into cart session
               applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
               setNegotiationAttempts(0); // Reset after successful discount
-              setShowDiscountToast({
-                code: couponResult.couponCode,
-                percent: couponResult.discountPercent,
-                reason: couponResult.reason
+              setShowDiscountToast({ 
+                code: couponResult.couponCode, 
+                percent: couponResult.discountPercent, 
+                reason: couponResult.reason 
               });
               setMessages(prev => [...prev, {
                 role: 'assistant',
@@ -1391,7 +1389,7 @@ CURRENT STATE:
           } else if (fnName === 'change_theme') {
             const currentTheme = theme;
             const targetMode = args.mode;
-
+            
             // Toggle if no mode specified, or switch to the specified mode
             if (!targetMode || targetMode !== currentTheme) {
               toggleTheme();
@@ -1407,7 +1405,7 @@ CURRENT STATE:
               setMessages(prev => [...prev, { role: 'assistant', text: `Already in ${currentTheme} mode. Looking good.` }]);
             }
             didShowSomething = true;
-
+            
           } else if (fnName === 'initiate_checkout') {
             await handleLocalIntent('checkout');
             didShowSomething = true;
@@ -1442,8 +1440,8 @@ CURRENT STATE:
       }
 
       setConversationHistory(prev => [...prev.slice(-8),
-      { role: 'user', text: userMessage },
-      { role: 'assistant', text: finalClerkResponse || '(showed products)' }
+        { role: 'user', text: userMessage },
+        { role: 'assistant', text: finalClerkResponse || '(showed products)' }
       ]);
 
     } catch (error: any) {
@@ -1496,7 +1494,7 @@ CURRENT STATE:
     const avgRating = getAvgRating(product);
     const reviewCount = product.reviews?.length || 0;
     const topReview = product.reviews?.[0];
-
+    
     return (
       <div className="group bg-white dark:bg-gray-900 border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 transition-all duration-300 overflow-hidden flex-shrink-0 w-[200px]">
         <div className="relative aspect-square overflow-hidden bg-gray-50 dark:bg-gray-800">
@@ -1508,7 +1506,7 @@ CURRENT STATE:
         <div className="p-3">
           <p className="text-[9px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-bold">{product.category}</p>
           <p className="text-xs font-bold line-clamp-2 mt-1 leading-tight">{product.name}</p>
-
+          
           {/* Reviews */}
           <div className="flex items-center gap-1 mt-2">
             {[...Array(5)].map((_, i) => (
@@ -1516,14 +1514,14 @@ CURRENT STATE:
             ))}
             <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-1">({reviewCount})</span>
           </div>
-
+          
           {/* Top Review Snippet */}
           {topReview && (
             <p className="text-[8px] text-gray-500 dark:text-gray-400 italic mt-2 line-clamp-2 leading-tight">
               "{topReview.comment}"
             </p>
           )}
-
+          
           {/* Actions */}
           <div className="flex items-center gap-2 mt-3">
             <button
@@ -1613,7 +1611,7 @@ CURRENT STATE:
       <div className={`fixed inset-y-0 right-0 z-[130] w-full sm:w-[520px] transition-all duration-700 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="absolute inset-0 glass-panel border-l border-black/5 dark:border-white/10" />
         <div className="relative h-full flex flex-col">
-
+          
           {/* Header */}
           <div className="p-6 md:p-10 border-b border-black/5 dark:border-white/5 flex justify-between items-end">
             <div>
@@ -1658,7 +1656,7 @@ CURRENT STATE:
                 <div className={`max-w-[95%] p-4 ${m.role === 'user' ? 'text-right font-light italic text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900' : 'text-left text-black dark:text-white bg-black/5 dark:bg-white/5'} ${m.error ? 'border-l-2 border-red-500 dark:border-red-400' : ''}`}>
                   {m.error && <AlertCircle size={12} className="text-red-500 dark:text-red-400 mb-2 inline-block mr-1" />}
                   <span className="whitespace-pre-line text-sm leading-relaxed">{m.text}</span>
-
+                  
                   {/* Search Metadata */}
                   {m.searchMetadata && (
                     <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10">
@@ -1668,14 +1666,14 @@ CURRENT STATE:
                     </div>
                   )}
                 </div>
-
+                
                 {/* PRODUCT CARDS - CRITICAL FEATURE */}
                 {m.products && m.products.length > 0 && (
                   <div className="flex gap-3 overflow-x-auto mt-3 pb-2 w-full no-scrollbar">
                     {m.products.map(p => <ProductCardInChat key={p.id} product={p} />)}
                   </div>
                 )}
-
+                
                 {m.coupon && <CouponCard coupon={m.coupon} />}
                 {m.isTryOn && m.tryOnResult && (
                   <div className="mt-3 w-48 aspect-[3/4] overflow-hidden border border-black/10 dark:border-white/10">
