@@ -14,7 +14,6 @@ const Checkout: React.FC = () => {
 
   const [isOrdered, setIsOrdered] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [guestEmail, setGuestEmail] = useState('');
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Shipping State
@@ -82,31 +81,28 @@ const Checkout: React.FC = () => {
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Ensure user is authenticated
+    if (!user) {
+      setAuthModalOpen(true);
+      addToast('Please sign in to complete your purchase.', 'error');
+      return;
+    }
+    
     setIsProcessing(true);
     setPaymentError(null);
 
     try {
-      const shippingMetadata = {
-        address,
-        city,
-        postal_code: postalCode,
-        coordinates: locationCoords
-      };
+      const shippingAddress = `${address}, ${city}, ${postalCode}`;
 
       // ─── Step 1: Record Checkout in Supabase (status: pending_payment) ───
       const { data: checkoutRecord, error: checkoutError } = await supabase
         .from('checkouts')
         .insert({
-          user_id: user?.id || null,
-          email: user?.email || guestEmail,
-          items: cart.map(item => ({
-            id: item.product.id,
-            name: item.product.name,
-            quantity: item.quantity,
-            price: item.product.price
-          })),
+          user_id: user.id,
+          address: shippingAddress,
+          amount: cartSubtotal,
           total_amount: cartTotal,
-          shipping_address: shippingMetadata,
           status: 'pending_payment'
         })
         .select('id')
@@ -114,10 +110,33 @@ const Checkout: React.FC = () => {
 
       if (checkoutError) throw checkoutError;
 
-      // ─── Step 2: Audit Log ───
+      // ─── Step 2: Insert Checkout Items ───
+      if (checkoutRecord?.id) {
+        // Insert items - for items with quantity > 1, insert multiple rows
+        const checkoutItems = cart.flatMap(item => 
+          Array.from({ length: item.quantity }, () => ({
+            order_id: checkoutRecord.id,
+            item_id: parseInt(item.product.id),
+            name: item.product.name,
+            category: item.product.category,
+            price: item.product.price
+          }))
+        );
+
+        const { error: itemsError } = await supabase
+          .from('checkout_items')
+          .insert(checkoutItems);
+
+        if (itemsError) {
+          console.error('Failed to insert checkout items:', itemsError);
+          throw itemsError;
+        }
+      }
+
+      // ─── Step 3: Audit Log ───
       await logClerkInteraction({
-        user_id: user?.id,
-        user_email: user?.email || guestEmail,
+        user_id: user.id,
+        user_email: user.email,
         user_message: "SYSTEM_CHECKOUT_EVENT",
         clerk_response: "Acquisition initialized. Redirecting to secure payment gateway.",
         clerk_sentiment: 'happy',
@@ -127,7 +146,7 @@ const Checkout: React.FC = () => {
           price: item.product.price
         })),
         checkout_details: {
-          shipping_address: shippingMetadata,
+          shipping_address: shippingAddress,
           payment_method: 'Stripe_Checkout',
           order_id: checkoutRecord?.id
         },
@@ -135,8 +154,8 @@ const Checkout: React.FC = () => {
         discount_offered: negotiatedDiscount
       });
 
-      // ─── Step 3: Persist Address if opted-in ───
-      if (user && saveAddress) {
+      // ─── Step 4: Persist Address if opted-in ───
+      if (saveAddress) {
         await updateProfile({
           saved_address: address,
           saved_city: city,
@@ -144,7 +163,7 @@ const Checkout: React.FC = () => {
         });
       }
 
-      // ─── Step 4: Create Stripe Checkout Session & Redirect ───
+      // ─── Step 5: Create Stripe Checkout Session & Redirect ───
       const lineItems: CheckoutLineItem[] = cart.map(item => ({
         id: item.product.id,
         name: item.product.name,
@@ -158,7 +177,7 @@ const Checkout: React.FC = () => {
         totalAmount: cartTotal,
         discountPercent: negotiatedDiscount,
         couponCode: appliedCoupon,
-        customerEmail: user?.email || guestEmail || undefined,
+        customerEmail: user.email,
         shippingAddress: {
           address,
           city,
@@ -218,6 +237,51 @@ const Checkout: React.FC = () => {
     );
   }
 
+  // Prevent guest checkout - require authentication
+  if (!user) {
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center p-8 animate-in fade-in duration-700 bg-white dark:bg-black">
+        <div className="max-w-2xl mx-auto text-center space-y-8">
+          <div className="flex justify-center mb-8">
+            <div className="w-24 h-24 border-2 border-black dark:border-white rounded-full flex items-center justify-center">
+              <Lock size={48} strokeWidth={1} className="text-black dark:text-white" />
+            </div>
+          </div>
+          
+          <h1 className="font-serif-elegant text-4xl md:text-6xl font-bold uppercase tracking-tight mb-4 text-black dark:text-white">
+            Authentication Required
+          </h1>
+          
+          <p className="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-[0.2em] mb-12 max-w-md mx-auto leading-relaxed">
+            To proceed with checkout and track your orders, you must first sign in or create an account.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="w-full sm:w-auto bg-black dark:bg-white text-white dark:text-black px-12 py-5 text-xs font-bold uppercase tracking-[0.3em] hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border border-black dark:border-white transition-all"
+            >
+              Sign In / Register
+            </button>
+            <Link 
+              to="/"
+              className="w-full sm:w-auto border border-black dark:border-white px-12 py-5 text-xs font-bold uppercase tracking-[0.3em] text-black dark:text-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all text-center"
+            >
+              Continue Browsing
+            </Link>
+          </div>
+
+          <div className="border-t border-black/10 dark:border-white/10 pt-8 mt-8">
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-[0.3em] flex items-center justify-center gap-2">
+              <ShieldCheck size={14} />
+              Secure checkout available after authentication
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-12 animate-in fade-in duration-700 bg-white dark:bg-black">
       <Link to="/" className="flex items-center space-x-2 text-xs uppercase tracking-widest font-bold mb-12 text-black dark:text-white hover:opacity-50 transition-opacity">
@@ -227,23 +291,6 @@ const Checkout: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
         <div className="lg:col-span-7 space-y-12">
-          {!user && (
-            <div className="bg-gray-50 dark:bg-neutral-900/50 border border-black dark:border-white/20 p-8 flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center space-x-4">
-                <UserIcon size={24} strokeWidth={1} className="text-black dark:text-white" />
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-black dark:text-white">Authenticated Experience</h3>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-1">Sign in to track orders and save your archive profile.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="whitespace-nowrap bg-black dark:bg-white text-white dark:text-black px-8 py-3 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border border-black dark:border-white transition-all"
-              >
-                Sign In
-              </button>
-            </div>
-          )}
 
           <section className="space-y-8">
             <div className="flex justify-between items-end border-b border-black dark:border-white pb-4">
@@ -264,20 +311,9 @@ const Checkout: React.FC = () => {
               <form id="checkout-form" onSubmit={handlePlaceOrder} className="space-y-6">
                 <div>
                   <label className="block text-[10px] uppercase tracking-widest font-bold mb-2 text-black dark:text-white">Email Address</label>
-                  {user ? (
-                    <div className="w-full border-b border-black/10 dark:border-white/10 py-3 text-sm uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                      {user.email}
-                    </div>
-                  ) : (
-                    <input
-                      required
-                      type="email"
-                      placeholder="EMAIL@EXAMPLE.COM"
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors"
-                    />
-                  )}
+                  <div className="w-full border-b border-black/10 dark:border-white/10 py-3 text-sm uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                    {user.email}
+                  </div>
                 </div>
 
                 <div className="space-y-6 relative">

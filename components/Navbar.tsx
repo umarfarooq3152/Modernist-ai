@@ -65,15 +65,15 @@ const Navbar: React.FC = () => {
             </div>
 
             <nav className="hidden md:flex items-center space-x-8">
-              {categories.slice(0, 5).map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => filterByCategory(cat)}
-                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'text-black' : 'text-gray-400 hover:text-black'
+                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'text-black dark:text-white' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'
                     }`}
                 >
                   {cat}
-                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-black transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-black dark:bg-white transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
                 </button>
               ))}
             </nav>
