@@ -1,28 +1,30 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, CreditCard, Truck, ShieldCheck, Tag, Lock, User as UserIcon, MapPin, Navigation, Globe, Check } from 'lucide-react';
+import { ArrowLeft, CheckCircle, CreditCard, Truck, ShieldCheck, Tag, Lock, User as UserIcon, MapPin, Navigation, Globe, Check, Loader2, AlertTriangle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { createCheckoutSession, type CheckoutLineItem } from '../lib/stripe';
 
 const Checkout: React.FC = () => {
   const { cart, clearCart, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, addToast, logClerkInteraction } = useStore();
   const { user, profile, loading, setAuthModalOpen, updateProfile } = useAuth();
   const navigate = useNavigate();
-  
+
   const [isOrdered, setIsOrdered] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [guestEmail, setGuestEmail] = useState('');
-  
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
   // Shipping State
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [saveAddress, setSaveAddress] = useState(true);
   const [useSavedAddress, setUseSavedAddress] = useState(false);
-  
-  const [locationCoords, setLocationCoords] = useState<{lat: number, lng: number} | null>(null);
+
+  const [locationCoords, setLocationCoords] = useState<{ lat: number, lng: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
@@ -40,6 +42,15 @@ const Checkout: React.FC = () => {
       setPostalCode(profile.saved_postal || '');
     }
   }, [profile]);
+
+  // Handle payment cancellation return
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    if (params.get('payment') === 'cancelled') {
+      setPaymentError('Payment was cancelled. Your cart is intact — you can try again.');
+      addToast('Payment cancelled. No charges were made.', 'info');
+    }
+  }, [addToast]);
 
   const handleLocateMe = () => {
     setIsLocating(true);
@@ -72,7 +83,8 @@ const Checkout: React.FC = () => {
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
-    
+    setPaymentError(null);
+
     try {
       const shippingMetadata = {
         address,
@@ -81,8 +93,8 @@ const Checkout: React.FC = () => {
         coordinates: locationCoords
       };
 
-      // 1. Record Checkout in Supabase orders table
-      const { error: checkoutError } = await supabase
+      // ─── Step 1: Record Checkout in Supabase (status: pending_payment) ───
+      const { data: checkoutRecord, error: checkoutError } = await supabase
         .from('checkouts')
         .insert({
           user_id: user?.id || null,
@@ -95,32 +107,35 @@ const Checkout: React.FC = () => {
           })),
           total_amount: cartTotal,
           shipping_address: shippingMetadata,
-          status: 'pending'
-        });
+          status: 'pending_payment'
+        })
+        .select('id')
+        .single();
 
       if (checkoutError) throw checkoutError;
 
-      // 2. Audit Log (as requested: save cart snapshot and shipping to clerk_logs)
+      // ─── Step 2: Audit Log ───
       await logClerkInteraction({
         user_id: user?.id,
         user_email: user?.email || guestEmail,
         user_message: "SYSTEM_CHECKOUT_EVENT",
-        clerk_response: "Acquisition documented and archived.",
+        clerk_response: "Acquisition initialized. Redirecting to secure payment gateway.",
         clerk_sentiment: 'happy',
-        cart_snapshot: cart.map(item => ({ 
-          id: item.product.id, 
-          qty: item.quantity, 
-          price: item.product.price 
+        cart_snapshot: cart.map(item => ({
+          id: item.product.id,
+          qty: item.quantity,
+          price: item.product.price
         })),
-        checkout_details: { 
+        checkout_details: {
           shipping_address: shippingMetadata,
-          payment_method: 'Stripe_Card_Primary'
+          payment_method: 'Stripe_Checkout',
+          order_id: checkoutRecord?.id
         },
         negotiation_successful: true,
         discount_offered: negotiatedDiscount
       });
 
-      // 3. Persist Address to Profile if opted-in
+      // ─── Step 3: Persist Address if opted-in ───
       if (user && saveAddress) {
         await updateProfile({
           saved_address: address,
@@ -129,17 +144,38 @@ const Checkout: React.FC = () => {
         });
       }
 
-      // Simulate external payment processing latency
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setIsProcessing(false);
-      setIsOrdered(true);
-      clearCart();
-      addToast('Acquisition archived successfully.', 'success');
+      // ─── Step 4: Create Stripe Checkout Session & Redirect ───
+      const lineItems: CheckoutLineItem[] = cart.map(item => ({
+        id: item.product.id,
+        name: item.product.name,
+        image_url: item.product.image_url,
+        price: item.product.price,
+        quantity: item.quantity,
+      }));
+
+      await createCheckoutSession({
+        lineItems,
+        totalAmount: cartTotal,
+        discountPercent: negotiatedDiscount,
+        couponCode: appliedCoupon,
+        customerEmail: user?.email || guestEmail || undefined,
+        shippingAddress: {
+          address,
+          city,
+          postalCode,
+          coordinates: locationCoords,
+        },
+        orderId: checkoutRecord?.id,
+      });
+
+      // If we reach here, redirect was initiated by Stripe.js
+      // The page will navigate away — no further code executes
+
     } catch (err: any) {
-      console.error(err);
+      console.error('[MODERNIST:Checkout] Payment error:', err);
       setIsProcessing(false);
-      addToast('Acquisition finalization failed: ' + err.message, 'error');
+      setPaymentError(err.message || 'An unexpected error occurred.');
+      addToast('Payment initialization failed: ' + (err.message || 'Unknown error'), 'error');
     }
   };
 
@@ -200,7 +236,7 @@ const Checkout: React.FC = () => {
                   <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-1">Sign in to track orders and save your archive profile.</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setAuthModalOpen(true)}
                 className="whitespace-nowrap bg-black dark:bg-white text-white dark:text-black px-8 py-3 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border border-black dark:border-white transition-all"
               >
@@ -215,7 +251,7 @@ const Checkout: React.FC = () => {
                 Shipping Details
               </h2>
               {profile?.saved_address && (
-                <button 
+                <button
                   onClick={toggleSavedAddress}
                   className={`text-[8px] uppercase tracking-widest font-black px-4 py-2 border transition-all ${useSavedAddress ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white' : 'bg-transparent text-gray-400 border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white'}`}
                 >
@@ -233,59 +269,59 @@ const Checkout: React.FC = () => {
                       {user.email}
                     </div>
                   ) : (
-                    <input 
-                      required 
-                      type="email" 
-                      placeholder="EMAIL@EXAMPLE.COM" 
+                    <input
+                      required
+                      type="email"
+                      placeholder="EMAIL@EXAMPLE.COM"
                       value={guestEmail}
                       onChange={(e) => setGuestEmail(e.target.value)}
-                      className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors" 
+                      className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors"
                     />
                   )}
                 </div>
-                
+
                 <div className="space-y-6 relative">
                   {useSavedAddress && (
                     <div className="absolute inset-0 z-10 bg-white/40 dark:bg-black/40 backdrop-blur-[1px] flex items-start justify-end p-2 pointer-events-none">
-                       <Check size={16} className="text-black dark:text-white" />
+                      <Check size={16} className="text-black dark:text-white" />
                     </div>
                   )}
-                  
+
                   <div>
                     <label className="block text-[10px] uppercase tracking-widest font-bold mb-2 text-black dark:text-white">Shipping Address</label>
-                    <input 
-                      required 
+                    <input
+                      required
                       disabled={useSavedAddress}
-                      type="text" 
-                      placeholder="STREET ADDRESS" 
+                      type="text"
+                      placeholder="STREET ADDRESS"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors disabled:text-gray-400 dark:disabled:text-gray-600" 
+                      className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors disabled:text-gray-400 dark:disabled:text-gray-600"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-6">
                     <div>
                       <label className="block text-[10px] uppercase tracking-widest font-bold mb-2 text-black dark:text-white">City</label>
-                      <input 
-                        required 
+                      <input
+                        required
                         disabled={useSavedAddress}
-                        type="text" 
-                        placeholder="CITY" 
+                        type="text"
+                        placeholder="CITY"
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
-                        className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors disabled:text-gray-400 dark:disabled:text-gray-600" 
+                        className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors disabled:text-gray-400 dark:disabled:text-gray-600"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] uppercase tracking-widest font-bold mb-2 text-black dark:text-white">Postal Code</label>
-                      <input 
-                        required 
+                      <input
+                        required
                         disabled={useSavedAddress}
-                        type="text" 
-                        placeholder="POSTAL" 
+                        type="text"
+                        placeholder="POSTAL"
                         value={postalCode}
                         onChange={(e) => setPostalCode(e.target.value)}
-                        className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors disabled:text-gray-400 dark:disabled:text-gray-600" 
+                        className="w-full border-b border-black/10 dark:border-white/10 focus:border-black dark:focus:border-white outline-none py-3 text-sm uppercase tracking-wider bg-transparent text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-colors disabled:text-gray-400 dark:disabled:text-gray-600"
                       />
                     </div>
                   </div>
@@ -293,7 +329,7 @@ const Checkout: React.FC = () => {
 
                 {user && (
                   <div className="flex items-center space-x-3 pt-4">
-                    <button 
+                    <button
                       type="button"
                       onClick={() => setSaveAddress(!saveAddress)}
                       className={`w-5 h-5 border flex items-center justify-center transition-all ${saveAddress ? 'bg-black dark:bg-white border-black dark:border-white' : 'border-gray-200 dark:border-gray-700'}`}
@@ -303,9 +339,9 @@ const Checkout: React.FC = () => {
                     <span className="text-[10px] uppercase tracking-widest font-black text-gray-500 dark:text-gray-400">Document this location for future acquisitions</span>
                   </div>
                 )}
-                
+
                 <div className="pt-8">
-                  <button 
+                  <button
                     type="button"
                     onClick={handleLocateMe}
                     className="flex items-center space-x-2 text-[8px] uppercase tracking-[0.3em] font-black text-black dark:text-white hover:opacity-50 transition-opacity group"
@@ -368,10 +404,26 @@ const Checkout: React.FC = () => {
               <div className="border border-black dark:border-white p-6 flex items-center justify-between bg-black dark:bg-white text-white dark:text-black">
                 <div className="flex items-center space-x-4">
                   <CreditCard size={20} strokeWidth={1} />
-                  <span className="text-xs uppercase tracking-widest font-bold">Secure Card Processing</span>
+                  <div>
+                    <span className="text-xs uppercase tracking-widest font-bold block">Stripe Secure Checkout</span>
+                    <span className="text-[8px] uppercase tracking-widest opacity-60 block mt-0.5">
+                      You'll be redirected to Stripe's secure payment page
+                    </span>
+                  </div>
                 </div>
                 <ShieldCheck size={16} />
               </div>
+
+              {/* Payment Error Banner */}
+              {paymentError && (
+                <div className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 p-4 flex items-start space-x-3 animate-in fade-in slide-in-from-top duration-300">
+                  <AlertTriangle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-red-600 dark:text-red-400">Payment Error</p>
+                    <p className="text-xs text-red-500 dark:text-red-400 mt-1">{paymentError}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -413,15 +465,25 @@ const Checkout: React.FC = () => {
               </div>
             </div>
 
-            <button 
+            <button
               type="submit" form="checkout-form" disabled={isProcessing}
-              className="w-full bg-black dark:bg-white text-white dark:text-black py-6 text-xs uppercase tracking-[0.3em] font-bold flex items-center justify-center space-x-3 hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border border-black dark:border-white transition-all group disabled:opacity-50"
+              className="w-full bg-black dark:bg-white text-white dark:text-black py-6 text-xs uppercase tracking-[0.3em] font-bold flex items-center justify-center space-x-3 hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border border-black dark:border-white transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isProcessing ? <span className="animate-pulse tracking-widest uppercase">Securing Acquisition...</span> : <span>Confirm & Pay</span>}
+              {isProcessing ? (
+                <span className="flex items-center space-x-3">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="tracking-widest uppercase">Connecting to Payment Gateway...</span>
+                </span>
+              ) : (
+                <span className="flex items-center space-x-2">
+                  <Lock size={14} />
+                  <span>Secure Checkout — Pay ${cartTotal.toLocaleString()}</span>
+                </span>
+              )}
             </button>
             <div className="flex items-center justify-center space-x-2 opacity-30 text-[8px] uppercase tracking-widest font-bold text-black dark:text-white">
               <Lock size={10} />
-              <span>SSL SECURED ARCHIVE PAYMENT</span>
+              <span>STRIPE ENCRYPTED · PCI DSS COMPLIANT</span>
             </div>
           </div>
         </div>
