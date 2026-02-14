@@ -42,6 +42,7 @@ interface HaggleSession {
   userCommitmentLevel: number; // 0-100 scale
   discountGiven: boolean;
   couponCode: string | null;
+  justAskedToContinue: boolean; // Track if we just asked "do you still want discount?"
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -232,6 +233,7 @@ const AIChatAgent: React.FC = () => {
     userCommitmentLevel: 0,
     discountGiven: false,
     couponCode: null,
+    justAskedToContinue: false,
   });
   const [lastSuccessfulHaggle, setLastSuccessfulHaggle] = useState<{ couponCode: string; timestamp: number } | null>(null);
   
@@ -611,6 +613,7 @@ const AIChatAgent: React.FC = () => {
       userCommitmentLevel: 0,
       discountGiven: false,
       couponCode: null,
+      justAskedToContinue: false,
     });
 
     return true;
@@ -680,14 +683,44 @@ const AIChatAgent: React.FC = () => {
   };
 
   const isOffTopicDuringHaggle = (message: string): boolean => {
-    const haggleKeywords = [
-      /\b(discount|price|cheaper|deal|off|percent|%|coupon|save)\b/i,
-      /\b(yes|no|okay|sure|fine|alright)\b/i,
-      /\b(birthday|student|military|anniversary|first time|special|occasion)\b/i,
+    // These are clearly OFF-TOPIC (product searches, info requests)
+    const offTopicPatterns = [
+      /\b(show|find|search|browse|looking for)\s+(me\s+)?(watches?|rings?|jewelry|shoes?|jacket|pants?|shirt|dress)\b/i,
+      /\b(what|whats|what's|tell me about|describe)\s+(your|the)\s+(return|shipping|policy|refund|warranty)\b/i,
+      /\b(how (much|many)|price of|cost of)\s+\w+/i,
+      /\b(add to cart|buy|purchase|checkout)\b/i,
     ];
 
-    // If message contains any haggle-related keyword, it's on-topic
-    return !haggleKeywords.some(pattern => pattern.test(message));
+    // If it matches clear off-topic patterns, it's off-topic
+    if (offTopicPatterns.some(pattern => pattern.test(message))) {
+      return true;
+    }
+
+    // These are ON-TOPIC for haggling (responses to AI questions)
+    const onTopicPatterns = [
+      /\b(discount|price|cheaper|deal|off|percent|%|coupon|save)\b/i,
+      /\b(yes|no|yeah|nah|yep|nope|okay|sure|fine|alright)\b/i,
+      /\b(birthday|student|military|anniversary|first time|special|occasion)\b/i,
+      /\b(poor|broke|tight budget|cant afford|expensive)\b/i,
+      /\b(buying|purchasing|getting|need|want|committed|serious)\b/i,
+      /\b(one|two|three|four|five|several|multiple|few|bunch)\s+(piece|item|thing)/i,
+      /\b(today|now|right now|immediately)\b/i,
+      /\b(forever|keep|long term|wardrobe|collection)\b/i,
+      /\b(love|like|really|definitely|absolutely)\b/i,
+    ];
+
+    // If it matches on-topic patterns, it's on-topic
+    if (onTopicPatterns.some(pattern => pattern.test(message))) {
+      return false;
+    }
+
+    // Short responses (under 15 chars) are likely answers to questions = on-topic
+    if (message.trim().length < 15) {
+      return false;
+    }
+
+    // Otherwise, assume it's off-topic
+    return true;
   };
 
   const buildCartContext = (): string => {
@@ -1596,7 +1629,8 @@ const AIChatAgent: React.FC = () => {
           { role: 'assistant', text: response }
         ],
         lastAIQuestion: response,
-        userCommitmentLevel: analyzeUserCommitment(userMessage)
+        userCommitmentLevel: analyzeUserCommitment(userMessage),
+        justAskedToContinue: false,
       }));
 
       setMessages(prev => [...prev, {
@@ -1616,13 +1650,69 @@ const AIChatAgent: React.FC = () => {
         { role: 'user' as const, text: userMessage }
       ];
 
+      // Special case: We just asked if they want to continue (after off-topic)
+      if (haggleSession.justAskedToContinue) {
+        const wantsToContinue = /\b(yes|yeah|yep|sure|okay|alright|of course|definitely|still want|want it)\b/i.test(userMessage);
+        const wantsToStop = /\b(no|nah|nope|stop|cancel|forget it|not interested)\b/i.test(userMessage);
+
+        if (wantsToStop) {
+          endHaggleSession(false);
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            text: "Alright, no worries. If you change your mind about that discount, just let me know."
+          }]);
+          setLoading(false);
+          return;
+        }
+
+        if (wantsToContinue) {
+          // Continue the haggle - ask next question
+          const continueResponses = [
+            "Great! So tell me — are you planning to buy today, or just considering?",
+            "Perfect! Now, how many items are we talking about here?",
+            "Excellent! One more thing: is this for a special occasion, or building your wardrobe?",
+          ];
+
+          const response = continueResponses[Math.floor(Math.random() * continueResponses.length)];
+          
+          setHaggleSession(prev => ({
+            ...prev,
+            conversationContext: [...updatedContext, { role: 'assistant', text: response }],
+            lastAIQuestion: response,
+            justAskedToContinue: false,
+          }));
+
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            text: response
+          }]);
+
+          setLoading(false);
+          return;
+        }
+      }
+
+      // User wants to abandon haggle (only if they're clearly declining)
+      const isExplicitDecline = /\b(no.*discount|not interested|nevermind|never mind|forget it|stop|cancel|don't want)\b/i.test(userMessage);
+      
+      if (isExplicitDecline) {
+        endHaggleSession(false);
+        
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: "Alright, discount negotiation cancelled. If you change your mind, just ask."
+        }]);
+
+        setLoading(false);
+        return;
+      }
+
       // Check if user is going off-topic
       if (isOffTopicDuringHaggle(userMessage)) {
         const offTopicResponses = [
-          "Hold on — we're in the middle of negotiating your discount here. Do you want this deal or not? Stay focused.",
-          "Wait, we're negotiating. You asked for a discount, remember? If you're not interested, we can stop right now.",
-          "Let's not get distracted. We're talking about getting you a discount. Do you still want that, or should we move on?",
-          "I'm trying to work out a deal for you here. Do you want the discount or not? Focus.",
+          "Hold on — we're in the middle of negotiating your discount here. Do you want this deal or not?",
+          "Wait, we're negotiating. You asked for a discount, remember? Still interested?",
+          "Let's not get distracted. We're talking about getting you a discount. Do you still want that?",
         ];
 
         const response = offTopicResponses[Math.floor(Math.random() * offTopicResponses.length)];
@@ -1630,25 +1720,13 @@ const AIChatAgent: React.FC = () => {
         setHaggleSession(prev => ({
           ...prev,
           conversationContext: [...updatedContext, { role: 'assistant', text: response }],
-          lastAIQuestion: response
+          lastAIQuestion: response,
+          justAskedToContinue: true, // Mark that we asked to continue
         }));
 
         setMessages(prev => [...prev, {
           role: 'assistant',
           text: response
-        }]);
-
-        setLoading(false);
-        return;
-      }
-
-      // User wants to abandon haggle
-      if (/\b(no|nah|nevermind|never mind|forget it|stop|cancel|not interested)\b/i.test(userMessage) && haggleSession.lastAIQuestion) {
-        endHaggleSession(false);
-        
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          text: "Alright, discount negotiation cancelled. If you change your mind, just ask."
         }]);
 
         setLoading(false);
@@ -1724,7 +1802,8 @@ const AIChatAgent: React.FC = () => {
         turnCount: newTurnCount,
         conversationContext: [...updatedContext, { role: 'assistant', text: response }],
         lastAIQuestion: response,
-        userCommitmentLevel: newCommitment
+        userCommitmentLevel: newCommitment,
+        justAskedToContinue: false, // Reset flag
       }));
 
       setMessages(prev => [...prev, {
