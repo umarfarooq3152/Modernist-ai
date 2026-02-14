@@ -1,8 +1,10 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Clock, CheckCircle, ChevronRight, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, Package, Clock, CheckCircle, ChevronRight, ShoppingBag, PartyPopper } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
+import { getPaymentStatus } from '../lib/stripe';
 
 interface OrderItem {
   id: string;
@@ -53,7 +55,19 @@ const mockOrders: Order[] = [
 
 const OrderHistory: React.FC = () => {
   const { user, loading } = useAuth();
+  const { addToast, clearCart } = useStore();
   const navigate = useNavigate();
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  // Handle Stripe payment redirect result
+  useEffect(() => {
+    const status = getPaymentStatus();
+    if (status === 'success') {
+      setPaymentSuccess(true);
+      clearCart();
+      addToast('Payment confirmed! Your acquisition is being processed.', 'success');
+    }
+  }, [addToast, clearCart]);
 
   if (loading) return null;
 
@@ -71,13 +85,26 @@ const OrderHistory: React.FC = () => {
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-12 animate-in fade-in duration-700">
-      <button 
+      <button
         onClick={() => navigate('/')}
         className="flex items-center space-x-2 text-xs uppercase tracking-widest font-bold mb-12 hover:opacity-50 transition-opacity"
       >
         <ArrowLeft size={16} />
         <span>Return to Archive</span>
       </button>
+
+      {/* Stripe Payment Success Banner */}
+      {paymentSuccess && (
+        <div className="mb-12 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 p-8 text-center animate-in fade-in slide-in-from-top duration-700">
+          <CheckCircle size={40} strokeWidth={1} className="mx-auto text-green-600 dark:text-green-400 mb-4" />
+          <h2 className="font-serif-elegant text-2xl md:text-3xl font-bold uppercase tracking-tight mb-2 text-green-700 dark:text-green-300">
+            Payment Confirmed
+          </h2>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-green-600 dark:text-green-400 font-bold max-w-md mx-auto">
+            Your Stripe payment was processed successfully. Your acquisition is now being prepared for dispatch.
+          </p>
+        </div>
+      )}
 
       <div className="mb-20">
         <p className="text-[10px] uppercase tracking-[0.4em] text-gray-400 font-bold mb-4">Patron History</p>
@@ -104,7 +131,7 @@ const OrderHistory: React.FC = () => {
                   </div>
                   <p className="text-[10px] uppercase tracking-widest text-gray-400 font-medium italic">{order.date}</p>
                 </div>
-                
+
                 <div className="flex flex-col items-start lg:items-end">
                   <span className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Total Acquisition</span>
                   <span className="text-2xl font-bold">${order.total.toLocaleString()}</span>
@@ -138,13 +165,13 @@ const OrderHistory: React.FC = () => {
       </div>
 
       <div className="mt-24 pt-12 border-t border-black/10 flex flex-col items-center">
-         <p className="text-[9px] uppercase tracking-widest text-gray-400 text-center max-w-sm mb-8">
-           All archival acquisitions are subject to our terms of preservation and global delivery protocols.
-         </p>
-         <button className="flex items-center space-x-3 text-[10px] uppercase tracking-[0.3em] font-black group">
-           <span>Request Archive Certification</span>
-           <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-         </button>
+        <p className="text-[9px] uppercase tracking-widest text-gray-400 text-center max-w-sm mb-8">
+          All archival acquisitions are subject to our terms of preservation and global delivery protocols.
+        </p>
+        <button className="flex items-center space-x-3 text-[10px] uppercase tracking-[0.3em] font-black group">
+          <span>Request Archive Certification</span>
+          <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+        </button>
       </div>
     </div>
   );
