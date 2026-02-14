@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Link } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AuthProvider } from './context/AuthContext';
-import { ThemeProvider } from 'next-themes';
+import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import CartSidebar from './components/CartSidebar';
