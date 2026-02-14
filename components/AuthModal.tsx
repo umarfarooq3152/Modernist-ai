@@ -157,18 +157,18 @@ const AuthModal: React.FC = () => {
             >
               <p className="text-[10px] uppercase tracking-[0.4em] text-gray-400 dark:text-gray-500 font-bold mb-4 flex items-center gap-2">
                 <span className="w-2 h-2 bg-black dark:bg-white rounded-full"></span>
-                The Atelier Archive
+                Modernist Account
               </p>
               <h2 className="font-serif-elegant text-4xl md:text-5xl font-medium tracking-tight text-black dark:text-white mb-2">
-                {stage === 'identity' ? 'Identify' :
-                  stage === 'verification' ? (isRegistering ? 'Establish' : 'Verify') :
-                    stage === 'onboarding' ? 'Establish' : 'Recover'}
+                {stage === 'identity' ? 'Welcome' :
+                  stage === 'verification' ? (isRegistering ? 'Create Account' : 'Welcome Back') :
+                    stage === 'onboarding' ? 'Create Account' : 'Reset Password'}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 font-light tracking-wide">
-                {stage === 'identity' ? 'Enter your correspondence address to proceed.' :
-                  stage === 'verification' ? 'Secure your session with your passkey.' :
-                    stage === 'onboarding' ? 'Create your permanent curator profile.' :
-                      'Reset your access credentials.'}
+                {stage === 'identity' ? 'Enter your email to continue.' :
+                  stage === 'verification' ? 'Enter your password to sign in.' :
+                    stage === 'onboarding' ? 'Enter your name to create your account.' :
+                      'We will send you a recovery link.'}
               </p>
             </motion.div>
           </div>
@@ -238,7 +238,7 @@ const AuthModal: React.FC = () => {
                     </button>
 
                     <div className="text-center">
-                      <span className="text-[9px] uppercase tracking-widest text-gray-400">or connect via</span>
+                      <span className="text-[9px] uppercase tracking-widest text-gray-400">or continue with</span>
                     </div>
 
                     <button
@@ -261,8 +261,8 @@ const AuthModal: React.FC = () => {
                         onClick={switchToRegister}
                         className="w-full text-[9px] uppercase tracking-widest text-gray-500 hover:text-black dark:hover:text-white transition-colors flex items-center justify-center gap-2 group"
                       >
-                        <span>New to the Archive?</span>
-                        <span className="font-bold underline decoration-transparent group-hover:decoration-current transition-all">Establish Identity</span>
+                        <span>New here?</span>
+                        <span className="font-bold underline decoration-transparent group-hover:decoration-current transition-all">Create an account</span>
                       </button>
                     </div>
                   </div>
@@ -338,13 +338,13 @@ const AuthModal: React.FC = () => {
                       animate={{ opacity: 1 }}
                       className="p-3 bg-gray-50 dark:bg-white/5 border-l-2 border-black dark:border-white text-[10px] leading-relaxed text-gray-600 dark:text-gray-400"
                     >
-                      <span className="font-bold">New Curator?</span> We will attempt to verify your credentials. If you are new, you may need to <button type="button" onClick={switchToRegister} className="underline font-bold text-black dark:text-white">establish an account</button>.
+                      <span className="font-bold">New here?</span> <button type="button" onClick={switchToRegister} className="underline font-bold text-black dark:text-white">Create an account</button> to continue.
                     </motion.div>
                   )}
 
                   {stage === 'onboarding' && (
                     <div className="p-3 bg-gray-50 dark:bg-white/5 border-l-2 border-black dark:border-white text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">
-                      <span className="font-bold">Returning?</span> <button type="button" onClick={switchToLogin} className="underline font-bold text-black dark:text-white">Log in here</button> if you already have an archive.
+                      <span className="font-bold">Have an account?</span> <button type="button" onClick={switchToLogin} className="underline font-bold text-black dark:text-white">Log in here</button>.
                     </div>
                   )}
 
@@ -356,7 +356,7 @@ const AuthModal: React.FC = () => {
                     <span className="text-xs uppercase tracking-[0.3em] font-bold">
                       {loading ? 'Processing...' :
                         stage === 'forgot_password' ? 'Send Reset Link' :
-                          isRegistering ? 'Initialize Archive' : 'Access Archive'}
+                          isRegistering ? 'Create Account' : 'Sign In'}
                     </span>
                     {loading ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
                   </button>
