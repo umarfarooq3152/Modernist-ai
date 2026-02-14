@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo, useEffect, useState } from 'react';
 import { Product, CartItem, StoreState, StoreAction, UserMood, SortOrder, ClerkLog, OrderRecord, Review } from '../types';
-import { productsData } from '../data/products';
 import { supabase } from '../lib/supabase';
 import { searchInERP, fetchERPProducts, createInERP, syncFromN8N } from '../lib/actions/sync';
 
@@ -46,11 +45,13 @@ interface StoreContextValue extends StoreState {
   fetchUserOrders: (userId: string) => Promise<OrderRecord[]>;
   fetchUserReviews: (userId: string) => Promise<Review[]>;
   toggleTheme: () => void;
+  lockCart: () => void;
+  unlockCart: () => void;
 }
 
 const initialState: StoreState = {
-  products: productsData,
-  allProducts: productsData,
+  products: [],
+  allProducts: [],
   cart: [],
   isCartOpen: false,
   isSearchOpen: false,
@@ -61,6 +62,7 @@ const initialState: StoreState = {
   sortOrder: 'relevance',
   lastAddedProduct: null,
   theme: 'light',
+  isCartLocked: false,
 };
 
 const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
@@ -205,6 +207,10 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       return { ...state, lastAddedProduct: null };
     case 'TOGGLE_THEME':
       return { ...state, theme: state.theme === 'light' ? 'dark' : 'light' };
+    case 'LOCK_CART':
+      return { ...state, isCartLocked: true };
+    case 'UNLOCK_CART':
+      return { ...state, isCartLocked: false };
     default:
       return state;
   }
@@ -469,13 +475,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
+  const lockCart = useCallback(() => dispatch({ type: 'LOCK_CART' }), []);
+  const unlockCart = useCallback(() => dispatch({ type: 'UNLOCK_CART' }), []);
 
   const value = {
     ...state, cartSubtotal, cartTotal, synergyDiscount, activeVibe, isCurating, isInitialLoading, toasts, quickViewProduct, isSyncingERP,
     addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
-    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, toggleTheme
+    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, toggleTheme,
+    lockCart, unlockCart
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

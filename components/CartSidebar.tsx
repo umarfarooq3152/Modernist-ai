@@ -1,11 +1,11 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Minus, Plus, ShoppingBag, ArrowRight, Tag, Sparkles, Zap, AlertTriangle } from 'lucide-react';
+import { X, Minus, Plus, ShoppingBag, ArrowRight, Tag, Sparkles, Zap, AlertTriangle, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 
 const CartSidebar: React.FC = () => {
-  const { cart, isCartOpen, toggleCart, removeFromCart, updateQuantity, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, synergyDiscount } = useStore();
+  const { cart, isCartOpen, toggleCart, removeFromCart, updateQuantity, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, synergyDiscount, isCartLocked } = useStore();
   const navigate = useNavigate();
   const [totalFlashClass, setTotalFlashClass] = useState('');
   const prevDiscountRef = useRef(negotiatedDiscount);
@@ -41,6 +41,16 @@ const CartSidebar: React.FC = () => {
           <button onClick={toggleCart} className="p-2 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors"><X size={24} /></button>
         </div>
 
+        {isCartLocked && (
+          <div className="bg-yellow-400 text-black px-6 py-3 flex items-center gap-3 border-b border-black dark:border-white animate-in fade-in slide-in-from-top duration-500">
+            <Lock size={16} className="flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest">Negotiation In Progress</p>
+              <p className="text-[9px] opacity-75">Cart locked during discount haggling</p>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto no-scrollbar p-6">
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center space-y-4">
@@ -59,7 +69,13 @@ const CartSidebar: React.FC = () => {
                     <div>
                       <div className="flex justify-between items-start">
                         <h3 className="text-xs font-bold uppercase tracking-widest pr-4">{item.product.name}</h3>
-                        <button onClick={() => removeFromCart(item.product.id)} className="text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white"><X size={16} /></button>
+                        <button 
+                          onClick={() => !isCartLocked && removeFromCart(item.product.id)} 
+                          disabled={isCartLocked}
+                          className={`text-gray-400 dark:text-gray-500 ${!isCartLocked && 'hover:text-black dark:hover:text-white'} ${isCartLocked && 'opacity-30 cursor-not-allowed'}`}
+                        >
+                          <X size={16} />
+                        </button>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest">{item.product.category}</p>
@@ -70,10 +86,22 @@ const CartSidebar: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center border border-black dark:border-white">
-                        <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900"><Minus size={12} /></button>
+                      <div className={`flex items-center border border-black dark:border-white ${isCartLocked && 'opacity-50 cursor-not-allowed'}`}>
+                        <button 
+                          onClick={() => !isCartLocked && updateQuantity(item.product.id, item.quantity - 1)} 
+                          disabled={isCartLocked}
+                          className={`p-2 ${!isCartLocked && 'hover:bg-gray-100 dark:hover:bg-gray-900'} ${isCartLocked && 'cursor-not-allowed'}`}
+                        >
+                          <Minus size={12} />
+                        </button>
                         <span className="px-4 text-xs font-bold">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900"><Plus size={12} /></button>
+                        <button 
+                          onClick={() => !isCartLocked && updateQuantity(item.product.id, item.quantity + 1)} 
+                          disabled={isCartLocked}
+                          className={`p-2 ${!isCartLocked && 'hover:bg-gray-100 dark:hover:bg-gray-900'} ${isCartLocked && 'cursor-not-allowed'}`}
+                        >
+                          <Plus size={12} />
+                        </button>
                       </div>
                       <div className="text-right">
                         {item.quantity >= 2 && (
@@ -133,10 +161,16 @@ const CartSidebar: React.FC = () => {
             
             <button 
               onClick={handleCheckout}
-              className="w-full bg-black dark:bg-white text-white dark:text-black py-5 text-xs uppercase tracking-[0.2em] font-bold flex items-center justify-center space-x-3 hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border border-black dark:border-white transition-all group"
+              disabled={isCartLocked}
+              className={`w-full py-5 text-xs uppercase tracking-[0.2em] font-bold flex items-center justify-center space-x-3 border transition-all group ${
+                isCartLocked 
+                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-700 cursor-not-allowed opacity-50' 
+                  : 'bg-black dark:bg-white text-white dark:text-black hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white border-black dark:border-white'
+              }`}
             >
-              <span>Finalize Acquisition</span>
-              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              <span>{isCartLocked ? 'Complete Negotiation First' : 'Finalize Acquisition'}</span>
+              {!isCartLocked && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+              {isCartLocked && <Lock size={16} />}
             </button>
           </div>
         )}
