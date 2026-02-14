@@ -354,12 +354,12 @@ const AIChatAgent: React.FC = () => {
       type: 'function',
       function: {
         name: 'add_to_cart',
-        description: 'Add product to bag by ID. Use when user says "add this", "I\'ll take it", "buy the X".',
+        description: 'Add product to bag by ID or name. Use when user says "add this", "I\'ll take it", "buy the X", "add [product name] to cart". Supports natural language product names like "skeleton watch", "leather jacket", etc. IMPORTANT: Extract quantity from user message (e.g., "add 2 watches", "add watch 3 quantity", "5 of those").',
         parameters: {
           type: 'object',
           properties: {
-            product_id: { type: 'string', description: 'The product ID' },
-            quantity: { type: 'number', description: 'Quantity (default 1)' },
+            product_id: { type: 'string', description: 'The product ID or natural language product name/description (e.g., "skeleton watch", "leather tote", "minimalist watch")' },
+            quantity: { type: 'number', description: 'Quantity to add (default 1). Extract from user message: "2", "3 quantity", "5 pcs", etc.' },
           },
           required: ['product_id'],
         },
@@ -541,7 +541,7 @@ const AIChatAgent: React.FC = () => {
     );
   };
 
-  const handleLocalIntent = (msg: string): IntentResult => {
+  const handleLocalIntent = async (msg: string): Promise<IntentResult> => {
     const m = msg.toLowerCase().trim();
 
     // ── GREETING ──
@@ -577,7 +577,7 @@ const AIChatAgent: React.FC = () => {
     }
 
     // ── SHOW CART ──
-    if (/\b(what('?s| is) in my (cart|bag)|show.*(cart|bag)|my (cart|bag)|view (cart|bag))\b/i.test(m)) {
+    if (/\b(what('?s| is) in my (cart|bag)|show (me )?(my )?(cart|bag)|view (my )?(cart|bag)|check (my )?(cart|bag))\b/i.test(m) && !/\b(add|put|place)\b.*\b(to|in)\b.*\b(cart|bag)\b/i.test(m)) {
       if (cart.length === 0) {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty. Let me show you pieces that earn their place in your life." }]);
       } else {
@@ -672,10 +672,46 @@ const AIChatAgent: React.FC = () => {
     // ── ADD TO CART (by name) ──
     const addMatch = m.match(/\b(add|buy|get|want|grab|i('ll| will) take)\b/i);
     if (addMatch) {
-      const product = findProductByName(m);
+      let product = findProductByName(m);
+      
+      // If not found with simple matching, try semantic search
+      if (!product && embeddingModelStatus === 'ready') {
+        const cleanQuery = m.replace(/\b(add|buy|get|want|grab|i('ll| will) take|to|my|the|a|an|please|cart|bag)\b/gi, '').trim();
+        if (cleanQuery.length > 3) {
+          try {
+            const queryEmbedding = await getLocalEmbedding(cleanQuery);
+            if (queryEmbedding) {
+              let bestMatch: Product | null = null;
+              let bestScore = 0;
+              
+              for (const p of allProducts) {
+                let prodEmbedding = productEmbeddingsCache.get(p.id);
+                if (!prodEmbedding) {
+                  prodEmbedding = await getLocalEmbedding(`${p.name} ${p.description} ${p.tags.join(' ')}`);
+                  if (prodEmbedding) setProductEmbeddingsCache(prev => new Map(prev).set(p.id, prodEmbedding));
+                }
+                if (prodEmbedding) {
+                  const score = cosineSimilarity(queryEmbedding, prodEmbedding);
+                  if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = p;
+                  }
+                }
+              }
+              
+              if (bestMatch && bestScore > 0.3) {
+                product = bestMatch;
+              }
+            }
+          } catch (err) {
+            console.warn('[handleLocalIntent] Semantic search failed:', err);
+          }
+        }
+      }
+      
       if (product) {
-        const qtyMatch = m.match(/(\d+)\s*(of|x|×)/i);
-        const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+        const qtyMatch = m.match(/(\d+)\s*(of|x|×|quantity|quantities|qty|pcs?|pieces?|items?)\b/i) || m.match(/\b(quantity|quantities|qty)\s*(\d+)/i);
+        const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2]) : 1;
         addToCartWithQuantity(product.id, qty);
         const addResponses = [
           `${product.name} × ${qty} — secured. Excellent choice, honestly.`,
@@ -883,7 +919,7 @@ const AIChatAgent: React.FC = () => {
 
     // ═══ TRY LOCAL INTENT ENGINE FIRST (no API call) ═══
     // Only for clear, unambiguous intents that don't need AI conversation
-    const localResult = handleLocalIntent(userMessage);
+    const localResult = await handleLocalIntent(userMessage);
     if (localResult.handled) {
       // Store actual responses in conversation history (not just intent names)
       const lastMessage = messages[messages.length - 1]; // Get the response that was just added
@@ -1049,6 +1085,39 @@ CURRENT STATE:
                 p.id.toLowerCase().includes(q) ||
                 q.includes(p.name.toLowerCase())
               );
+              
+              // If still not found, use semantic search (RAG)
+              if (!product && embeddingModelStatus === 'ready') {
+                try {
+                  const queryEmbedding = await getLocalEmbedding(q);
+                  if (queryEmbedding) {
+                    let bestMatch: Product | null = null;
+                    let bestScore = 0;
+                    
+                    for (const p of allProducts) {
+                      let prodEmbedding = productEmbeddingsCache.get(p.id);
+                      if (!prodEmbedding) {
+                        prodEmbedding = await getLocalEmbedding(`${p.name} ${p.description} ${p.tags.join(' ')}`);
+                        if (prodEmbedding) setProductEmbeddingsCache(prev => new Map(prev).set(p.id, prodEmbedding));
+                      }
+                      if (prodEmbedding) {
+                        const score = cosineSimilarity(queryEmbedding, prodEmbedding);
+                        if (score > bestScore) {
+                          bestScore = score;
+                          bestMatch = p;
+                        }
+                      }
+                    }
+                    
+                    // Use semantic match if score is decent (>0.3)
+                    if (bestMatch && bestScore > 0.3) {
+                      product = bestMatch;
+                    }
+                  }
+                } catch (err) {
+                  console.warn('[add_to_cart] Semantic search failed:', err);
+                }
+              }
             }
             if (product) {
               addToCartWithQuantity(product.id, args.quantity || 1);
@@ -1140,7 +1209,7 @@ CURRENT STATE:
             }
             didShowSomething = true;
           } else if (fnName === 'recommend_products') {
-            handleLocalIntent('recommend something');
+            await handleLocalIntent('recommend something');
             didShowSomething = true;
           } else if (fnName === 'change_theme') {
             const currentTheme = theme;
@@ -1162,10 +1231,10 @@ CURRENT STATE:
             }
             didShowSomething = true;
           } else if (fnName === 'initiate_checkout') {
-            handleLocalIntent('checkout');
+            await handleLocalIntent('checkout');
             didShowSomething = true;
           } else if (fnName === 'show_cart_summary') {
-            handleLocalIntent('show my cart');
+            await handleLocalIntent('show my cart');
             didShowSomething = true;
           } else if (fnName === 'check_inventory') {
             const product = allProducts.find(p => p.id === args.product_name_or_id || p.name.toLowerCase().includes((args.product_name_or_id || '').toLowerCase()));

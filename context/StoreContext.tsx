@@ -157,8 +157,8 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       console.log('[FILTER] allProducts count:', state.allProducts.length);
       // Priority 1: If specific product IDs are provided (from RAG), use those directly
       if (action.payload.productIds && action.payload.productIds.length > 0) {
-        const idSet = new Set(action.payload.productIds.map((id: string) => id.toLowerCase()));
-        const byId = filtered.filter(p => idSet.has(p.id.toLowerCase()));
+        const idSet = new Set(action.payload.productIds.map((id: string | number) => String(id).toLowerCase()));
+        const byId = filtered.filter(p => idSet.has(String(p.id).toLowerCase()));
         console.log('[FILTER] ID match: ids passed=', action.payload.productIds.length, 'matched=', byId.length, 'sampleIds:', action.payload.productIds.slice(0, 3), 'sampleAllProductIds:', state.allProducts.slice(0, 3).map(p => p.id));
         if (byId.length > 0) {
           filtered = byId;
