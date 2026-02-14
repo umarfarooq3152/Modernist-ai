@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo, useEffect, useState } from 'react';
 import { Product, CartItem, StoreState, StoreAction, UserMood, SortOrder, ClerkLog, OrderRecord, Review } from '../types';
-import { productsData } from '../data/products';
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { searchInERP, fetchERPProducts, createInERP, syncFromN8N } from '../lib/actions/sync';
@@ -554,7 +553,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
-    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, toggleTheme
+    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, toggleTheme,
+    lockCart, unlockCart
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
