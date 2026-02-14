@@ -6,6 +6,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { createCheckoutSession, type CheckoutLineItem } from '../lib/stripe';
+import { sendOrderConfirmationEmail } from '../lib/email';
 
 const Checkout: React.FC = () => {
   const { cart, clearCart, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, addToast, logClerkInteraction } = useStore();
@@ -94,6 +95,33 @@ const Checkout: React.FC = () => {
 
     try {
       const shippingAddress = `${address}, ${city}, ${postalCode}`;
+      
+      // ─── Send Order Confirmation Email Immediately ───
+      const customerName = profile?.full_name || 
+                         user.user_metadata?.full_name || 
+                         user.email?.split('@')[0] || 
+                         'Valued Customer';
+      
+      const orderId = Date.now().toString();
+      
+      // Send email without waiting
+      sendOrderConfirmationEmail(
+        orderId,
+        customerName,
+        user.email || '',
+        cart,
+        cartTotal,
+        shippingAddress
+      ).then(success => {
+        if (success) {
+          console.log('✅ Order confirmation email sent');
+          addToast('Order confirmation email sent!', 'success');
+        } else {
+          console.warn('⚠️ Email sending failed, but continuing checkout');
+        }
+      }).catch(err => {
+        console.error('Email error:', err);
+      });
 
       // ─── Step 1: Record Checkout in Supabase (status: pending_payment) ───
       const { data: checkoutRecord, error: checkoutError } = await supabase

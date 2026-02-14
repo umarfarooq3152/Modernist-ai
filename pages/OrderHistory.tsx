@@ -1,17 +1,77 @@
 
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Package, Clock, CheckCircle, ChevronRight, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { OrderRecord } from '../types';
+import { sendOrderConfirmationEmail } from '../lib/email';
 
 const OrderHistory: React.FC = () => {
-  const { user, loading: authLoading } = useAuth();
-  const { fetchUserOrders } = useStore();
+  const { user, profile, loading: authLoading } = useAuth();
+  const { fetchUserOrders, cart } = useStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [emailSent, setEmailSent] = useState(false);
+
+  // Email is now sent immediately on checkout, not after payment success
+  // Check for successful payment and send confirmation email
+  /* DISABLED - Email now sent on checkout button click
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const paymentSuccess = params.get('payment') === 'success';
+    const orderId = params.get('order_id');
+
+    if (paymentSuccess && orderId && user && !emailSent) {
+      // Send confirmation email
+      const sendEmail = async () => {
+        try {
+          const userOrders = await fetchUserOrders(user.id);
+          const order = userOrders.find(o => o.id === orderId);
+
+          if (order) {
+            const customerName = profile?.full_name || 
+                               user.user_metadata?.full_name || 
+                               user.email?.split('@')[0] || 
+                               'Valued Patron';
+
+            const shippingAddress = profile?.saved_address || 'Address on file';
+
+            await sendOrderConfirmationEmail(
+              orderId,
+              customerName,
+              user.email || '',
+              order.items.map(item => ({
+                product: {
+                  id: item.id,
+                  name: item.name,
+                  price: item.price,
+                  category: item.name.split(' ')[0], // approximate category
+                  image_url: item.image_url || '',
+                  description: '',
+                  bottom_price: item.price,
+                  tags: []
+                },
+                quantity: item.quantity
+              })),
+              order.total_amount,
+              shippingAddress
+            );
+
+            setEmailSent(true);
+            console.log('✅ Order confirmation email sent');
+          }
+        } catch (error) {
+          console.error('Error sending confirmation email:', error);
+        }
+      };
+
+      sendEmail();
+    }
+  }, [location, user, profile, fetchUserOrders, emailSent]);
+  */
 
   useEffect(() => {
     const loadOrders = async () => {

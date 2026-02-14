@@ -49,7 +49,7 @@ const heroSlides: HeroSlide[] = [
 const HeroSlider: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
-  const { setCurrentCategory } = useStore();
+  const { filterByCategory } = useStore();
 
   // Auto-play functionality
   useEffect(() => {
@@ -78,7 +78,7 @@ const HeroSlider: React.FC = () => {
   };
 
   const handleExploreCategory = (category: string) => {
-    setCurrentCategory(category);
+    filterByCategory(category);
     // Smooth scroll to products section
     const productsSection = document.getElementById('products-section');
     if (productsSection) {
