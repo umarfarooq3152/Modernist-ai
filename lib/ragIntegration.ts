@@ -114,6 +114,12 @@ export async function handleSearchInventoryToolCall(
   products: Product[];
   error?: boolean;
 }> {
+  // Type coercion: Convert string numbers to actual numbers
+  // (AI sometimes passes "1000" instead of 1000 despite schema)
+  if (typeof args.max_results === 'string') args.max_results = parseInt(args.max_results, 10);
+  if (typeof args.min_price === 'string') args.min_price = parseFloat(args.min_price);
+  if (typeof args.max_price === 'string') args.max_price = parseFloat(args.max_price);
+  
   const query = (args.query || '').trim();
   
   // Validate query
@@ -213,6 +219,11 @@ export function handleGenerateCouponToolCall(
   cartItems: { product: Product; quantity: number }[],
   rudenessScore: number
 ): CouponResult {
+  // Type coercion: Convert string numbers to actual numbers
+  if (typeof args.discount === 'string') {
+    args.discount = parseFloat(args.discount);
+  }
+  
   const sentiment = (args.sentiment || 'neutral').toLowerCase();
 
   // SPINE: Refuse rude users entirely, apply surcharge

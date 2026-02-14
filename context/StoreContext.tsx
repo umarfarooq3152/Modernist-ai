@@ -155,11 +155,14 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       }
     case 'UPDATE_PRODUCT_FILTER':
       let filtered = state.allProducts;
+      console.log('[FILTER] UPDATE_PRODUCT_FILTER action.payload:', action.payload);
+      console.log('[FILTER] state.allProducts.length:', state.allProducts.length);
       try {
         // Priority 1: If specific product IDs provided (from RAG), use them directly
         if (action.payload.productIds && action.payload.productIds.length > 0) {
-          const idSet = new Set(action.payload.productIds.map((id: string) => id.toLowerCase()));
-          const byId = filtered.filter(p => idSet.has(p.id.toLowerCase()));
+          const idSet = new Set(action.payload.productIds.map((id: string | number) => String(id).toLowerCase()));
+          const byId = filtered.filter(p => idSet.has(String(p.id).toLowerCase()));
+          console.log('[FILTER] ID filtering: requested=', action.payload.productIds.length, 'matched=', byId.length);
           if (byId.length > 0) filtered = byId;
         }
         // Only do text matching if productIds didn't narrow results
@@ -185,6 +188,7 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       }
       // Safety net: never blank
       if (filtered.length === 0) filtered = state.allProducts;
+      console.log('[FILTER] Final filtered.length:', filtered.length, 'IDs:', filtered.slice(0, 5).map(p => p.id));
       return { ...state, products: filtered };
     case 'SET_SORT_ORDER':
       let sorted = [...state.products];
