@@ -43,6 +43,26 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             isHovered ? 'opacity-100' : 'opacity-0'
           }`}
         >
+          {/* Rating Display on Hover */}
+          {reviewCount > 0 && (
+            <div className="pointer-events-none bg-white/95 backdrop-blur-md px-5 py-3 border border-black/10 flex items-center gap-3 transform translate-y-8 group-hover:translate-y-0 transition-all duration-500">
+              <div className="flex items-center gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    size={14}
+                    fill={i < Math.round(averageRating) ? "black" : "none"}
+                    strokeWidth={1}
+                    className={i < Math.round(averageRating) ? "text-black" : "text-gray-300"}
+                  />
+                ))}
+              </div>
+              <span className="text-[11px] font-black text-black">
+                {averageRating.toFixed(1)} ({reviewCount})
+              </span>
+            </div>
+          )}
+          
           <button 
             onClick={(e) => {
               e.preventDefault();
@@ -84,6 +104,26 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             {product.category}
           </span>
         </div>
+
+        {/* Rating Display - Always Visible */}
+        {reviewCount > 0 && (
+          <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-md px-3 py-2 border border-black/10 shadow-lg flex items-center gap-2">
+            <div className="flex items-center gap-0.5">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={11}
+                  fill={i < Math.round(averageRating) ? "black" : "none"}
+                  strokeWidth={1}
+                  className={i < Math.round(averageRating) ? "text-black" : "text-gray-300"}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] font-black text-black">
+              {averageRating.toFixed(1)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Product Information */}

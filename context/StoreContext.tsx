@@ -240,13 +240,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           setTimeout(() => reject(new Error('Request timeout')), 5000)
         );
 
-        const { data, error } = await Promise.race([
-          anonClient.from('products').select('*'),
+        const [productsResult, reviewsResult] = await Promise.race([
+          Promise.all([
+            anonClient.from('products').select('*'),
+            anonClient.from('reviews').select('*')
+          ]),
           timeoutPromise
         ]) as any;
 
-        if (data && !error && data.length > 0) {
-          dispatch({ type: 'SET_PRODUCTS', payload: data as Product[] });
+        const { data: productsData, error: productsError } = productsResult;
+        const { data: reviewsData, error: reviewsError } = reviewsResult;
+
+        if (productsData && !productsError && productsData.length > 0) {
+          // Create a map of reviews by product_id
+          const reviewsByProduct = new Map<string, Review[]>();
+          if (reviewsData && !reviewsError) {
+            reviewsData.forEach((review: Review) => {
+              if (!reviewsByProduct.has(review.product_id)) {
+                reviewsByProduct.set(review.product_id, []);
+              }
+              reviewsByProduct.get(review.product_id)!.push(review);
+            });
+          }
+
+          // Attach reviews to products
+          const productsWithReviews = productsData.map((product: Product) => ({
+            ...product,
+            reviews: reviewsByProduct.get(product.id) || []
+          }));
+
+          dispatch({ type: 'SET_PRODUCTS', payload: productsWithReviews });
         }
       } catch (e) {
         console.error("Supabase load failed (or timed out), falling back to local data", e);
