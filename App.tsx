@@ -9,13 +9,16 @@ import ProductCard from './components/ProductCard';
 import CartSidebar from './components/CartSidebar';
 import AIChatAgent from './components/AIChatAgent';
 import AuthModal from './components/AuthModal';
-import HeroSlider from './components/HeroSlider';
+import HeroSection from './components/HeroSection';
 import ProductDetail from './pages/ProductDetail';
 import Checkout from './pages/Checkout';
 import OrderHistory from './pages/OrderHistory';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import { ProgressiveBlur } from './components/ui/progressive-blur';
+import { motion } from 'framer-motion';
 import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
+import GlobalLoader from './components/GlobalLoader';
 
 // Error Boundary to prevent blank screens
 // @ts-ignore — React class component type workaround
@@ -40,7 +43,7 @@ class ErrorBoundary extends React.Component {
         React.createElement('h1', { style: { fontSize: 24, marginBottom: 16 } }, 'Something crashed'),
         React.createElement('pre', { style: { whiteSpace: 'pre-wrap', color: '#faa', fontSize: 14 } }, err?.message),
         React.createElement('pre', { style: { whiteSpace: 'pre-wrap', color: '#888', fontSize: 12, marginTop: 12 } }, err?.stack),
-        React.createElement('button', { 
+        React.createElement('button', {
           onClick: () => window.location.reload(),
           style: { marginTop: 24, padding: '12px 24px', background: '#fff', color: '#000', border: 'none', cursor: 'pointer', fontWeight: 'bold' }
         }, 'Reload App')
@@ -53,7 +56,7 @@ class ErrorBoundary extends React.Component {
 
 const QuickViewModal: React.FC = () => {
   const { quickViewProduct, setQuickViewProduct, addToCart } = useStore();
-  
+
   // Close on ESC
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -67,13 +70,13 @@ const QuickViewModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-500">
-      <div 
-        className="absolute inset-0 bg-black/40 backdrop-blur-xl" 
-        onClick={() => setQuickViewProduct(null)} 
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-xl"
+        onClick={() => setQuickViewProduct(null)}
       />
-      
+
       <div className="relative w-full max-w-[1000px] bg-white dark:bg-black border border-black dark:border-white shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-500">
-        <button 
+        <button
           onClick={() => setQuickViewProduct(null)}
           className="absolute top-6 right-6 z-10 p-3 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-90"
         >
@@ -81,9 +84,9 @@ const QuickViewModal: React.FC = () => {
         </button>
 
         <div className="w-full md:w-1/2 aspect-[3/4] md:aspect-auto bg-gray-50 dark:bg-gray-900 overflow-hidden">
-          <img 
-            src={quickViewProduct.image_url} 
-            alt={quickViewProduct.name} 
+          <img
+            src={quickViewProduct.image_url}
+            alt={quickViewProduct.name}
             className="w-full h-full object-cover transition-transform duration-[2s] hover:scale-110"
           />
         </div>
@@ -105,7 +108,7 @@ const QuickViewModal: React.FC = () => {
           </div>
 
           <div className="space-y-4 mt-12">
-            <button 
+            <button
               onClick={() => {
                 addToCart(quickViewProduct);
                 setQuickViewProduct(null);
@@ -115,8 +118,8 @@ const QuickViewModal: React.FC = () => {
               <Plus size={16} />
               <span>Add to Archive Bag</span>
             </button>
-            
-            <Link 
+
+            <Link
               to={`/product/${quickViewProduct.id}`}
               onClick={() => setQuickViewProduct(null)}
               className="w-full border border-black/10 dark:border-white/10 py-6 text-[10px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-95"
@@ -133,28 +136,27 @@ const QuickViewModal: React.FC = () => {
 
 const ToastManager: React.FC = () => {
   const { toasts, removeToast } = useStore();
-  
+
   return (
     <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] w-[95%] max-w-sm px-4 flex flex-col items-center gap-3 pointer-events-none">
       {toasts.map((toast) => (
-        <div 
-          key={toast.id} 
-          className={`toast-animate glass p-5 w-full shadow-2xl pointer-events-auto flex items-center gap-5 transition-all ${
-            toast.type === 'success' 
-              ? 'border-2 border-green-500 bg-green-50/90 dark:bg-green-950/50' 
-              : toast.type === 'error'
+        <div
+          key={toast.id}
+          className={`toast-animate glass p-5 w-full shadow-2xl pointer-events-auto flex items-center gap-5 transition-all ${toast.type === 'success'
+            ? 'border-2 border-green-500 bg-green-50/90 dark:bg-green-950/50'
+            : toast.type === 'error'
               ? 'border border-red-500/30 dark:border-red-500/30'
               : 'border border-black/10 dark:border-white/10'
-          }`}
+            }`}
         >
           {toast.type === 'success' && <CheckCircle size={22} className="text-green-600 dark:text-green-400 shrink-0" />}
           {toast.type === 'info' && <Info size={22} className="text-gray-400 dark:text-gray-500 shrink-0" />}
           {toast.type === 'error' && <AlertCircle size={22} className="text-red-500 dark:text-red-400 shrink-0" />}
-          
+
           <span className="text-[11px] uppercase tracking-[0.2em] font-black flex-1 leading-relaxed">
             {toast.message}
           </span>
-          
+
           <button onClick={() => removeToast(toast.id)} className="p-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-90">
             <X size={16} />
           </button>
@@ -178,17 +180,26 @@ const ProductGrid: React.FC = () => {
   }
 
   return (
-    <div id="products-section" className="max-w-[1400px] mx-auto px-4 md:px-8 py-8 md:py-20 page-reveal">
+    <section className="bg-[color:var(--bg-primary)] text-[color:var(--text-primary)]">
+      <div id="products-section" className="relative max-w-[1400px] mx-auto px-4 md:px-8 py-8 md:py-20 page-reveal overflow-hidden bg-[color:var(--bg-primary)]">
       <div className="mb-12 md:mb-20 border-b border-black dark:border-white pb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-10">
         <div className="relative group flex-1">
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 dark:text-gray-500 font-bold mb-6">Archival Collection</p>
           <h1 className="font-serif-elegant text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter uppercase leading-[0.9] truncate max-w-[90vw]">
-            {activeVibe ? activeVibe : (currentCategory === 'All' ? 'Selection' : currentCategory)}
+            {activeVibe ? (
+              <span className="themed-badge">{activeVibe}</span>
+            ) : (
+              currentCategory === 'All' ? (
+                <span className="themed-badge">Selection</span>
+              ) : (
+                <span className="themed-badge">{currentCategory}</span>
+              )
+            )}
           </h1>
-          
+
           <div className="flex items-center gap-5 mt-10">
             {activeVibe && (
-              <button 
+              <button
                 onClick={resetArchive}
                 className="flex items-center gap-3 bg-black dark:bg-white text-white dark:text-black px-6 py-3 text-[9px] uppercase tracking-[0.4em] font-black hover:bg-gray-800 dark:hover:bg-gray-200 transition-all active:scale-95 tap-highlight-none"
               >
@@ -204,15 +215,15 @@ const ProductGrid: React.FC = () => {
             )}
           </div>
         </div>
-        
+
         <div className="flex flex-col items-start lg:items-end gap-8 w-full lg:w-auto">
-           <div className="flex items-center space-x-8 text-[10px] uppercase tracking-widest font-black border border-black/10 dark:border-white/10 px-6 py-4 w-full sm:w-auto bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
-              <SlidersHorizontal size={14} />
-              <button onClick={() => setSortOrder('price-low')} className={`transition-opacity ${sortOrder === 'price-low' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: Low</button>
-              <button onClick={() => setSortOrder('price-high')} className={`transition-opacity ${sortOrder === 'price-high' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: High</button>
-           </div>
+          <div className="flex items-center space-x-8 text-[10px] uppercase tracking-widest font-black border border-black/10 dark:border-white/10 px-6 py-4 w-full sm:w-auto bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+            <SlidersHorizontal size={14} />
+            <button onClick={() => setSortOrder('price-low')} className={`transition-opacity ${sortOrder === 'price-low' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: Low</button>
+            <button onClick={() => setSortOrder('price-high')} className={`transition-opacity ${sortOrder === 'price-high' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: High</button>
+          </div>
           <p className="hidden lg:block text-[11px] uppercase tracking-[0.4em] font-bold text-gray-400 max-w-xs text-right leading-loose italic">
-            {activeVibe 
+            {activeVibe
               ? `Archival synchronization for intent: "${activeVibe}".`
               : "Documented lifestyle staples. Crafted for permanent silhouettes."}
           </p>
@@ -227,28 +238,85 @@ const ProductGrid: React.FC = () => {
             <button onClick={resetArchive} className="border border-black px-12 py-6 text-[10px] font-black uppercase tracking-[0.5em] hover:bg-black hover:text-white transition-all active:scale-95">Reset Selection</button>
           </div>
         ) : (
-          <div key={`${products.length}-${products[0]?.id}-${products[products.length-1]?.id}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 md:gap-x-12 gap-y-16 md:gap-y-24">
+          <div key={`${products.length}-${products[0]?.id}-${products[products.length - 1]?.id}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 md:gap-x-12 gap-y-16 md:gap-y-24">
             {products.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </div>
         )}
       </div>
-    </div>
+
+      {/* Progressive blur at bottom of products section */}
+        <ProgressiveBlur height="200px" position="bottom" className="opacity-40" />
+      </div>
+    </section>
+  );
+};
+
+const PhilosophySection: React.FC = () => {
+  return (
+    <section className="bg-white text-black dark:bg-black dark:text-white">
+      <div className="max-w-[1400px] mx-auto px-6 md:px-8 py-40">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-32 items-center">
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+          viewport={{ once: true }}
+          className="space-y-16"
+        >
+          <div className="space-y-8">
+            <span className="text-[10px] uppercase tracking-[0.8em] text-gray-400 dark:text-gray-500 font-bold block">Permanent Collection</span>
+            <h2 className="font-serif text-5xl md:text-8xl font-black leading-[0.85] tracking-tighter uppercase text-black dark:text-white">
+                <span className="themed-badge">Minimal</span> <br /> <span className="themed-badge">Landscape.</span>
+              </h2>
+          </div>
+          <p className="text-sm md:text-xl text-gray-500 dark:text-gray-400 leading-relaxed max-w-lg font-light italic">
+            "A curated response to the transient landscape. We document essentials that define the permanent silhouette."
+          </p>
+          <div className="flex items-center gap-12 pt-4">
+            <div className="w-20 h-[1px] bg-black/20 dark:bg-white/20"></div>
+            <span className="text-[10px] uppercase tracking-[0.5em] font-black text-black dark:text-white opacity-40 hover:opacity-100 transition-opacity cursor-pointer">View Archive</span>
+          </div>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-1px bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+          {[
+            { label: 'Arithmetic', desc: 'Precision in every documented ratio.' },
+            { label: 'Neutral', desc: 'A palette of absolute archival silence.' },
+            { label: 'Eternal', desc: 'Silhouettes detached from temporal drift.' },
+            { label: 'Tactile', desc: 'The felt weight of artisanal craft.' }
+          ].map((item, i) => (
+            <motion.div
+              key={item.label}
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              transition={{ duration: 1, delay: i * 0.15 }}
+              viewport={{ once: true }}
+              className="bg-white dark:bg-black p-12 space-y-6 hover:bg-gray-50 dark:hover:bg-zinc-950 transition-colors"
+            >
+              <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-black dark:text-white">{item.label}</h3>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-loose font-medium">{item.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+      </div>
+    </section>
   );
 };
 
 const HomePage: React.FC = () => {
   return (
-    <>
-      <HeroSlider />
+    <HeroSection>
+      <PhilosophySection />
       <ProductGrid />
-    </>
+    </HeroSection>
   );
 };
 
 const Footer: React.FC = () => (
-  <footer className="bg-black text-white pt-32 pb-16 mt-32">
+  <footer className="bg-black text-white pt-32 pb-16 mt-32 relative z-10">
     <div className="max-w-[1400px] mx-auto px-6 md:px-8">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-16 pb-24 border-b border-white/10">
         <div className="space-y-8">
@@ -298,7 +366,7 @@ const Footer: React.FC = () => (
 const AppContent: React.FC = () => {
   const location = useLocation();
   const isAdminPath = location.pathname.startsWith('/admin');
-  
+
   // Reset scroll and page resonance on path change
   React.useEffect(() => {
     window.scrollTo(0, 0);
@@ -306,6 +374,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-black selection:text-white overflow-x-hidden">
+      <GlobalLoader />
       {!isAdminPath && <Navbar />}
       <main className="flex-grow">
         <Routes>
@@ -330,15 +399,15 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <ErrorBoundary>
-    <ThemeProvider>
-      <AuthProvider>
-        <StoreProvider>
-          <Router>
-            <AppContent />
-          </Router>
-        </StoreProvider>
-      </AuthProvider>
-    </ThemeProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <StoreProvider>
+            <Router>
+              <AppContent />
+            </Router>
+          </StoreProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };

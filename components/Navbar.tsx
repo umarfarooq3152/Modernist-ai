@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import ThemeToggle from './ThemeToggle';
+import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
 
 const Navbar: React.FC = () => {
   const { cart, toggleCart, filterByCategory, currentCategory, searchProducts } = useStore();
@@ -59,23 +59,30 @@ const Navbar: React.FC = () => {
               {isMobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
             </button>
 
-            <div className="flex-1 md:flex-none flex justify-center md:block">
-              <Link to="/" className="font-serif-elegant text-xl md:text-2xl font-bold tracking-[0.2em] text-black dark:text-white transition-opacity hover:opacity-70">
+              <div className="flex-1 md:flex-none flex justify-center md:block">
+              <Link to="/" style={{ color: 'var(--text-primary)' }} className="font-serif-elegant text-xl md:text-2xl font-bold tracking-[0.2em] transition-opacity hover:opacity-70">
                 MODERNIST
               </Link>
             </div>
 
             <nav className="hidden md:flex items-center space-x-8">
               {categories.map((cat) => (
-                <button
+                <a
                   key={cat}
-                  onClick={() => filterByCategory(cat)}
-                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'text-black dark:text-white' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'
-                    }`}
+                  href="#products-section"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    // set filter then scroll to the products section
+                    try { filterByCategory(cat); } catch (err) { /* no-op */ }
+                    const el = document.getElementById('products-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                  style={{ color: 'var(--text-primary)' }}
+                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}
                 >
                   {cat}
-                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-black dark:bg-white transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
-                </button>
+                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-[color:var(--text-primary)] transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+                </a>
               ))}
             </nav>
 
@@ -95,7 +102,7 @@ const Navbar: React.FC = () => {
                 </div>
               </div>
 
-              <ThemeToggle />
+              <AnimatedThemeToggler className="w-9 h-9 text-[color:var(--text-primary)]" />
 
               <div className="relative">
                 {user ? (

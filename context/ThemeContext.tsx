@@ -30,7 +30,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   useEffect(() => {
     // Prevent flash of unstyled content
-    const stored = localStorage.getItem('theme-mode') as Theme | null;
+    // support legacy key for earlier toggler implementations
+    const stored = (localStorage.getItem('theme-mode') || localStorage.getItem('theme')) as Theme | null;
     const systemPreference = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     
     const activeTheme = stored || 'system';
