@@ -12,10 +12,10 @@ import { ProgressiveBlur } from './ui/progressive-blur';
 import { MorphingText } from './ui/morphing-text';
 import ReviewsSection from './ReviewsSection';
 
-// Make sure your image count matches your public/images folder
+// Make sure your image count matches your public folder (root) or configured publicDir
 const frameCount = 120;
 const currentFrame = (index: number) =>
-  `/images/ffout${String(index).padStart(3, '0')}.gif`;
+  `/ffout${String(index).padStart(3, '0')}.gif`;
 
 interface HeroSectionProps {
   children?: React.ReactNode;
