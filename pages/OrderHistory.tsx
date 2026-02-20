@@ -9,16 +9,14 @@ import { sendOrderConfirmationEmail } from '../lib/email';
 
 const OrderHistory: React.FC = () => {
   const { user, profile, loading: authLoading } = useAuth();
-  const { fetchUserOrders, cart } = useStore();
+  const { fetchUserOrders, cart, addToast } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [emailSent, setEmailSent] = useState(false);
 
-  // Email is now sent immediately on checkout, not after payment success
   // Check for successful payment and send confirmation email
-  /* DISABLED - Email now sent on checkout button click
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const paymentSuccess = params.get('payment') === 'success';
@@ -39,7 +37,7 @@ const OrderHistory: React.FC = () => {
 
             const shippingAddress = profile?.saved_address || 'Address on file';
 
-            await sendOrderConfirmationEmail(
+            const emailSuccess = await sendOrderConfirmationEmail(
               orderId,
               customerName,
               user.email || '',
@@ -60,6 +58,9 @@ const OrderHistory: React.FC = () => {
               shippingAddress
             );
 
+            if (emailSuccess) {
+              addToast('✓ Order confirmation email sent successfully!', 'success');
+            }
             setEmailSent(true);
             console.log('✅ Order confirmation email sent');
           }
@@ -70,8 +71,7 @@ const OrderHistory: React.FC = () => {
 
       sendEmail();
     }
-  }, [location, user, profile, fetchUserOrders, emailSent]);
-  */
+  }, [location, user, profile, fetchUserOrders, emailSent, addToast]);
 
   useEffect(() => {
     const loadOrders = async () => {

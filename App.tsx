@@ -139,9 +139,15 @@ const ToastManager: React.FC = () => {
       {toasts.map((toast) => (
         <div 
           key={toast.id} 
-          className="toast-animate glass border border-black/10 dark:border-white/10 p-5 w-full shadow-2xl pointer-events-auto flex items-center gap-5 transition-all"
+          className={`toast-animate glass p-5 w-full shadow-2xl pointer-events-auto flex items-center gap-5 transition-all ${
+            toast.type === 'success' 
+              ? 'border-2 border-green-500 bg-green-50/90 dark:bg-green-950/50' 
+              : toast.type === 'error'
+              ? 'border border-red-500/30 dark:border-red-500/30'
+              : 'border border-black/10 dark:border-white/10'
+          }`}
         >
-          {toast.type === 'success' && <CheckCircle size={22} className="text-black dark:text-white shrink-0" />}
+          {toast.type === 'success' && <CheckCircle size={22} className="text-green-600 dark:text-green-400 shrink-0" />}
           {toast.type === 'info' && <Info size={22} className="text-gray-400 dark:text-gray-500 shrink-0" />}
           {toast.type === 'error' && <AlertCircle size={22} className="text-red-500 dark:text-red-400 shrink-0" />}
           
