@@ -1,9 +1,12 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase configuration for MODERNIST storefront
-const supabaseUrl = 'https://nqtmajhemeafigwrbyay.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xdG1hamhlbWVhZmlnd3JieWF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5NzA4OTAsImV4cCI6MjA4NjU0Njg5MH0.AP1b2xREgVqIOf2pgDIhyIZQafudQuyv7xBrprhd2pc';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in environment variables.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

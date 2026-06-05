@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useCallback, useMemo, useEffect, useState } from 'react';
 import { Product, CartItem, StoreState, StoreAction, UserMood, SortOrder, ClerkLog, OrderRecord, Review } from '../types';
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { searchInERP, fetchERPProducts, createInERP, syncFromN8N } from '../lib/actions/sync';
 
@@ -233,23 +232,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const fetchProducts = async () => {
       setIsInitialLoading(true);
       try {
-        // ENTERPRISE FIX: Use a dedicated anonymous client to bypass authenticated RLS policies
-        // This ensures public data is ALWAYS fetched as 'public', avoiding recursion/deadlocks.
-        const d_url = 'https://nqtmajhemeafigwrbyay.supabase.co';
-        const d_key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xdG1hamhlbWVhZmlnd3JieWF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5NzA4OTAsImV4cCI6MjA4NjU0Njg5MH0.AP1b2xREgVqIOf2pgDIhyIZQafudQuyv7xBrprhd2pc';
-        const anonClient = createClient(d_url, d_key, {
-          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-        });
-
-        // Race against 5s timeout to prevent infinite loading
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Request timeout')), 5000)
         );
 
         const [productsResult, reviewsResult] = await Promise.race([
           Promise.all([
-            anonClient.from('products').select('*'),
-            anonClient.from('reviews').select('*')
+            // TODO(Step-2): hide bottom_price behind RLS once AI negotiation moves server-side
+            supabase.from('products').select('*'),
+            supabase.from('reviews').select('*')
           ]),
           timeoutPromise
         ]) as any;

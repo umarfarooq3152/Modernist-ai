@@ -490,15 +490,33 @@ const AdminDashboard: React.FC = () => {
 };
 
 const Admin: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
-    // In a real environment, we'd check metadata.role === 'admin'
-    // For this context, we will assume standard access or mock it
-  }, [user, loading, navigate]);
+    if (loading) return;
+    if (!user) {
+      navigate('/', { replace: true });
+      return;
+    }
+    if (profile && profile.role !== 'admin') {
+      navigate('/', { replace: true });
+    }
+  }, [user, profile, loading, navigate]);
+
+  if (loading || !user || !profile) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="modern-loader" />
+      </div>
+    );
+  }
+
+  if (profile.role !== 'admin') {
+    return null;
+  }
 
   const navLinks = [
     { path: '/admin', icon: LayoutDashboard, label: 'Overview' },

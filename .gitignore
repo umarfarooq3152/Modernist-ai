@@ -11,9 +11,16 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Environment variables — never commit these
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
+
+# Build/debug output files
+*.txt
+tsconfig.tsbuildinfo
+.vercel
 
 # Editor directories and files
 .vscode/*
