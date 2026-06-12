@@ -13,6 +13,7 @@ import {
   Search,
   RefreshCw,
   Plus,
+  Minus,
   DollarSign,
   ChevronRight,
   User,
@@ -31,10 +32,12 @@ import {
   Check,
   AlertTriangle,
   Cpu,
+  Download,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
-import { adminApi, AdminStats, AdminProduct, AdminReview, AdminOrder, AdminNegotiation } from '../lib/adminApi';
+import { adminApi, AdminStats, AdminProduct, AdminReview, AdminOrder, AdminNegotiation, InventoryItem, TopProduct } from '../lib/adminApi';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -325,6 +328,22 @@ const AdminInventory: React.FC = () => {
     }
   };
 
+  const handleAdjustStock = async (id: string, delta: number, reason: 'manual_adjustment' | 'restock' | 'write_off') => {
+    try {
+      await adminApi.inventory.adjust(id, delta, reason);
+      addToast(`Stock ${delta > 0 ? 'increased' : 'decreased'} by ${Math.abs(delta)}.`, 'success');
+      load();
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    }
+  };
+
+  const stockBadge = (qty: number, threshold: number) => {
+    if (qty === 0) return <span className="px-2 py-1 text-[8px] font-black uppercase tracking-widest bg-red-100 text-red-600">Out of stock</span>;
+    if (qty <= threshold) return <span className="px-2 py-1 text-[8px] font-black uppercase tracking-widest bg-amber-100 text-amber-700">{qty} left</span>;
+    return <span className="px-2 py-1 text-[8px] font-black uppercase tracking-widest bg-green-100 text-green-700">{qty}</span>;
+  };
+
   return (
     <div className="space-y-12 page-reveal">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black pb-10">
@@ -371,7 +390,7 @@ const AdminInventory: React.FC = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-black/10">
-              {['Image', 'Name', 'Price', 'Floor', 'Category', 'Actions'].map(h => (
+              {['Image', 'Name', 'Stock', 'Price', 'Floor', 'Category', 'Actions'].map(h => (
                 <th key={h} className="py-5 pr-4 text-[10px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
               ))}
             </tr>
@@ -379,7 +398,7 @@ const AdminInventory: React.FC = () => {
           <tbody className="divide-y divide-black/5">
             {loading ? (
               [...Array(5)].map((_, i) => (
-                <tr key={i}><td colSpan={6} className="py-4"><div className="h-12 bg-black/5 animate-pulse" /></td></tr>
+                <tr key={i}><td colSpan={7} className="py-4"><div className="h-12 bg-black/5 animate-pulse" /></td></tr>
               ))
             ) : products.map(p => (
               <tr key={p.id} className="group hover:bg-black/[0.02] transition-colors">
@@ -391,6 +410,27 @@ const AdminInventory: React.FC = () => {
                 <td className="py-4 pr-4">
                   <p className="text-xs font-bold uppercase tracking-widest">{p.name}</p>
                   <p className="text-[9px] text-gray-400 mt-1">ID: {p.id.slice(0, 8)}</p>
+                </td>
+                <td className="py-4 pr-4">
+                  <div className="space-y-2">
+                    {stockBadge(p.stock_quantity ?? 100, p.low_stock_threshold ?? 10)}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleAdjustStock(p.id, -1, 'manual_adjustment')}
+                        className="p-1 border border-black/10 hover:bg-black hover:text-white transition-all"
+                        title="Decrease stock"
+                      >
+                        <Minus size={10} />
+                      </button>
+                      <button
+                        onClick={() => handleAdjustStock(p.id, 10, 'restock')}
+                        className="p-1 border border-black/10 hover:bg-black hover:text-white transition-all"
+                        title="Restock +10"
+                      >
+                        <Plus size={10} />
+                      </button>
+                    </div>
+                  </div>
                 </td>
                 <td className="py-4 pr-4 text-sm font-black">${p.price.toLocaleString()}</td>
                 <td className="py-4 pr-4 text-sm font-black text-gray-400">${p.bottom_price.toLocaleString()}</td>
@@ -408,7 +448,7 @@ const AdminInventory: React.FC = () => {
               </tr>
             ))}
             {!loading && products.length === 0 && (
-              <tr><td colSpan={6} className="py-20 text-center text-[10px] text-gray-400 uppercase tracking-widest">No products found</td></tr>
+              <tr><td colSpan={7} className="py-20 text-center text-[10px] text-gray-400 uppercase tracking-widest">No products found</td></tr>
             )}
           </tbody>
         </table>
@@ -981,6 +1021,173 @@ const AdminSimilaritySandbox: React.FC = () => {
 };
 
 // ─────────────────────────────────────────────────────────
+// Reports
+// ─────────────────────────────────────────────────────────
+
+function exportCSV(filename: string, rows: string[][], headers: string[]) {
+  const lines = [headers, ...rows].map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([lines], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+const AdminReports: React.FC = () => {
+  const { addToast } = useStore();
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [invSummary, setInvSummary] = useState<{ total: number; out_of_stock: number; low_stock: number; healthy: number } | null>(null);
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'top-products'>('inventory');
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [invRes, topRes] = await Promise.all([
+          adminApi.inventory.report(),
+          adminApi.reports.topProducts(),
+        ]);
+        setInventory(invRes.data);
+        setInvSummary(invRes.summary);
+        setTopProducts(topRes.data);
+      } catch (e: any) {
+        addToast(e.message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const exportInventoryCSV = () => {
+    exportCSV(
+      'modernist-inventory.csv',
+      inventory.map(i => [i.id, i.name, i.category, String(i.price), String(i.stock_quantity), i.status]),
+      ['ID', 'Name', 'Category', 'Price', 'Stock', 'Status']
+    );
+  };
+
+  const exportTopProductsCSV = () => {
+    exportCSV(
+      'modernist-top-products.csv',
+      topProducts.map(p => [p.id, p.name, String(p.units), String(p.revenue.toFixed(2))]),
+      ['ID', 'Name', 'Units Sold', 'Revenue']
+    );
+  };
+
+  const statusDot = (status: string) =>
+    status === 'out_of_stock' ? 'bg-red-500' : status === 'low_stock' ? 'bg-amber-400' : 'bg-green-500';
+
+  return (
+    <div className="space-y-12 page-reveal">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black pb-10">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Analytics</p>
+          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter">Reports</h1>
+        </div>
+        <button
+          onClick={activeTab === 'inventory' ? exportInventoryCSV : exportTopProductsCSV}
+          className="flex items-center gap-2 border border-black px-5 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white transition-all"
+        >
+          <Download size={12} /> Export CSV
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      {invSummary && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { label: 'Total SKUs', value: invSummary.total, icon: <Package size={14} /> },
+            { label: 'Healthy', value: invSummary.healthy, icon: <Check size={14} />, color: 'text-green-600' },
+            { label: 'Low Stock', value: invSummary.low_stock, icon: <AlertTriangle size={14} />, color: 'text-amber-600' },
+            { label: 'Out of Stock', value: invSummary.out_of_stock, icon: <X size={14} />, color: 'text-red-600' },
+          ].map(({ label, value, icon, color }) => (
+            <div key={label} className="bg-white/50 border border-black/5 p-6 space-y-3">
+              <div className={`${color || 'text-black'}`}>{icon}</div>
+              <p className="text-[9px] uppercase tracking-[0.4em] font-black text-gray-400">{label}</p>
+              <p className={`text-3xl font-serif-elegant font-bold ${color || ''}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Tab switcher */}
+      <div className="flex gap-6 border-b border-black/10">
+        {(['inventory', 'top-products'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`pb-4 text-[10px] uppercase tracking-[0.4em] font-black transition-all border-b-2 -mb-px ${activeTab === tab ? 'border-black text-black' : 'border-transparent text-gray-400 hover:text-black'}`}
+          >
+            {tab === 'inventory' ? 'Inventory Status' : 'Top Products'}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">{[...Array(8)].map((_, i) => <div key={i} className="h-10 bg-black/5 animate-pulse" />)}</div>
+      ) : activeTab === 'inventory' ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-black/10">
+                {['Status', 'Product', 'Category', 'Price', 'Stock', 'Threshold'].map(h => (
+                  <th key={h} className="py-4 pr-6 text-[9px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5">
+              {inventory.map(item => (
+                <tr key={item.id} className="hover:bg-black/[0.02] transition-colors">
+                  <td className="py-4 pr-6">
+                    <span className={`inline-block w-2 h-2 rounded-full ${statusDot(item.status)}`} />
+                  </td>
+                  <td className="py-4 pr-6 text-xs font-bold uppercase tracking-widest max-w-[200px] truncate">{item.name}</td>
+                  <td className="py-4 pr-6 text-[9px] uppercase tracking-widest text-gray-500">{item.category}</td>
+                  <td className="py-4 pr-6 text-sm font-black">${item.price}</td>
+                  <td className="py-4 pr-6">
+                    <span className={`text-sm font-black ${item.stock_quantity === 0 ? 'text-red-600' : item.stock_quantity <= item.low_stock_threshold ? 'text-amber-600' : 'text-green-700'}`}>
+                      {item.stock_quantity}
+                    </span>
+                  </td>
+                  <td className="py-4 pr-6 text-sm text-gray-400">{item.low_stock_threshold}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-black/10">
+                {['Rank', 'Product', 'Units Sold', 'Revenue'].map(h => (
+                  <th key={h} className="py-4 pr-6 text-[9px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5">
+              {topProducts.length === 0 ? (
+                <tr><td colSpan={4} className="py-20 text-center text-[10px] text-gray-400 uppercase tracking-widest">No sales data yet</td></tr>
+              ) : topProducts.map((p, i) => (
+                <tr key={p.id} className="hover:bg-black/[0.02] transition-colors">
+                  <td className="py-4 pr-6 text-[10px] font-black text-gray-300">#{i + 1}</td>
+                  <td className="py-4 pr-6 text-xs font-bold uppercase tracking-widest">{p.name}</td>
+                  <td className="py-4 pr-6 text-sm font-black">{p.units}</td>
+                  <td className="py-4 pr-6 text-sm font-black text-green-700">${p.revenue.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
 // Root Admin wrapper
 // ─────────────────────────────────────────────────────────
 
@@ -1011,6 +1218,7 @@ const Admin: React.FC = () => {
     { path: '/admin/inventory', icon: Package, label: 'Inventory' },
     { path: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
     { path: '/admin/reviews', icon: Star, label: 'Reviews' },
+    { path: '/admin/reports', icon: FileText, label: 'Reports' },
     { path: '/admin/negotiations', icon: MessageSquare, label: 'Haggles' },
     { path: '/admin/sandbox', icon: Layers, label: 'Sandbox' },
     { path: '/admin/settings', icon: Settings, label: 'Protocols' },
@@ -1082,6 +1290,7 @@ const Admin: React.FC = () => {
             <Route path="/inventory" element={<AdminInventory />} />
             <Route path="/orders" element={<AdminOrders />} />
             <Route path="/reviews" element={<AdminReviews />} />
+            <Route path="/reports" element={<AdminReports />} />
             <Route path="/negotiations" element={<AdminNegotiations />} />
             <Route path="/sandbox" element={<AdminSimilaritySandbox />} />
             <Route path="/settings" element={<AdminSystemSettings />} />

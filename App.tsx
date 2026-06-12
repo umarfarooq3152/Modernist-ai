@@ -21,6 +21,7 @@ import { ProgressiveBlur } from './components/ui/progressive-blur';
 import { motion } from 'framer-motion';
 import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
 import GlobalLoader from './components/GlobalLoader';
+import RealtimeNotifications from './components/RealtimeNotifications';
 
 // Error Boundary to prevent blank screens
 // @ts-ignore — React class component type workaround
@@ -396,6 +397,7 @@ const AppContent: React.FC = () => {
       {!isAdminPath && <AIChatAgent />}
       <AuthModal />
       <ToastManager />
+      <RealtimeNotifications />
     </div>
   );
 }

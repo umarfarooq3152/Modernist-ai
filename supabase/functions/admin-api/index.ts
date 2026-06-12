@@ -310,6 +310,85 @@ async function handleUpdateOrderStatus(orderId: string, req: Request): Promise<R
   return json({ data });
 }
 
+async function handleAdjustStock(productId: string, req: Request): Promise<Response> {
+  const { delta, reason } = await req.json();
+  if (typeof delta !== "number" || delta === 0) return json({ error: "delta must be a non-zero integer" }, 400);
+  const allowedReasons = ["manual_adjustment", "restock", "write_off"];
+  if (!allowedReasons.includes(reason)) return json({ error: `reason must be one of: ${allowedReasons.join(", ")}` }, 400);
+
+  // Fetch current stock
+  const { data: product, error: fetchErr } = await serviceClient
+    .from("products").select("id, name, stock_quantity").eq("id", productId).single();
+  if (fetchErr || !product) return json({ error: "Product not found" }, 404);
+
+  const newStock = Math.max(0, (product.stock_quantity ?? 100) + delta);
+
+  const [updateRes, logRes] = await Promise.all([
+    serviceClient.from("products").update({ stock_quantity: newStock }).eq("id", productId).select("id, name, stock_quantity").single(),
+    serviceClient.from("inventory_logs").insert({ product_id: productId, delta, reason }),
+  ]);
+
+  if (updateRes.error) return json({ error: updateRes.error.message }, 500);
+  return json({ data: updateRes.data });
+}
+
+async function handleGetInventoryReport(): Promise<Response> {
+  const { data: products, error } = await serviceClient
+    .from("products")
+    .select("id, name, category, price, stock_quantity, low_stock_threshold")
+    .order("stock_quantity", { ascending: true });
+
+  if (error) return json({ error: error.message }, 500);
+
+  const report = (products || []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    price: p.price,
+    stock_quantity: p.stock_quantity ?? 100,
+    low_stock_threshold: p.low_stock_threshold ?? 10,
+    status: (p.stock_quantity ?? 100) === 0 ? "out_of_stock"
+      : (p.stock_quantity ?? 100) <= (p.low_stock_threshold ?? 10) ? "low_stock"
+      : "healthy",
+  }));
+
+  const summary = {
+    total: report.length,
+    out_of_stock: report.filter((p: any) => p.status === "out_of_stock").length,
+    low_stock: report.filter((p: any) => p.status === "low_stock").length,
+    healthy: report.filter((p: any) => p.status === "healthy").length,
+  };
+
+  return json({ data: report, summary });
+}
+
+async function handleGetTopProducts(): Promise<Response> {
+  // Aggregate units sold and revenue from checkout_items joined to completed checkouts
+  const { data, error } = await serviceClient
+    .from("checkout_items")
+    .select(`
+      product_id, product_name, product_price, quantity,
+      checkouts!inner(status)
+    `)
+    .eq("checkouts.status", "completed");
+
+  if (error) return json({ error: error.message }, 500);
+
+  const agg: Record<string, { name: string; units: number; revenue: number }> = {};
+  for (const row of data || []) {
+    if (!agg[row.product_id]) agg[row.product_id] = { name: row.product_name, units: 0, revenue: 0 };
+    agg[row.product_id].units += row.quantity;
+    agg[row.product_id].revenue += row.product_price * row.quantity;
+  }
+
+  const topProducts = Object.entries(agg)
+    .map(([id, v]) => ({ id, ...v }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 20);
+
+  return json({ data: topProducts });
+}
+
 async function handleGetNegotiations(url: URL): Promise<Response> {
   const { from, to } = parsePagination(url);
   const status = url.searchParams.get("status") || "";
@@ -352,6 +431,15 @@ serve(async (req: Request) => {
       if (method === "POST") return await handleCreateProduct(req);
       if (method === "PATCH" && id) return await handleUpdateProduct(id, req);
       if (method === "DELETE" && id) return await handleDeleteProduct(id);
+    }
+
+    if (resource === "inventory") {
+      if (method === "GET" && !id) return await handleGetInventoryReport();
+      if (method === "PATCH" && id) return await handleAdjustStock(id, req);
+    }
+
+    if (resource === "reports" && id === "top-products" && method === "GET") {
+      return await handleGetTopProducts();
     }
 
     if (resource === "reviews") {

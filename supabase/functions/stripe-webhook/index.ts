@@ -66,6 +66,7 @@ async function handleEvent(event: Stripe.Event) {
       const session = event.data.object as Stripe.Checkout.Session;
       const orderId = session.metadata?.order_id;
       if (orderId) {
+        // Mark order complete
         const { error } = await supabase
           .from("checkouts")
           .update({
@@ -75,6 +76,36 @@ async function handleEvent(event: Stripe.Event) {
           })
           .eq("id", orderId);
         if (error) throw error;
+
+        // Decrement stock for each item purchased
+        const { data: items } = await supabase
+          .from("checkout_items")
+          .select("product_id, quantity")
+          .eq("checkout_id", orderId);
+
+        if (items && items.length > 0) {
+          await Promise.all(items.map(async (item: { product_id: string; quantity: number }) => {
+            // Fetch current stock
+            const { data: product } = await supabase
+              .from("products")
+              .select("stock_quantity")
+              .eq("id", item.product_id)
+              .single();
+
+            if (!product) return;
+            const newQty = Math.max(0, (product.stock_quantity ?? 100) - item.quantity);
+
+            await Promise.all([
+              supabase.from("products").update({ stock_quantity: newQty }).eq("id", item.product_id),
+              supabase.from("inventory_logs").insert({
+                product_id: item.product_id,
+                delta: -item.quantity,
+                reason: "sale",
+                order_id: orderId,
+              }),
+            ]);
+          }));
+        }
       }
       break;
     }

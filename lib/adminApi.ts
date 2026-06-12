@@ -33,6 +33,25 @@ export interface AdminProduct {
   image_url: string;
   tags: string[];
   created_at: string;
+  stock_quantity: number;
+  low_stock_threshold: number;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  stock_quantity: number;
+  low_stock_threshold: number;
+  status: 'healthy' | 'low_stock' | 'out_of_stock';
+}
+
+export interface TopProduct {
+  id: string;
+  name: string;
+  units: number;
+  revenue: number;
 }
 
 export interface AdminReview {
@@ -199,6 +218,27 @@ export const adminApi = {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       }),
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Inventory
+  // ─────────────────────────────────────────────────────
+  inventory: {
+    report: () =>
+      adminFetch<{ data: InventoryItem[]; summary: { total: number; out_of_stock: number; low_stock: number; healthy: number } }>('inventory'),
+
+    adjust: (productId: string, delta: number, reason: 'manual_adjustment' | 'restock' | 'write_off') =>
+      adminFetch<{ data: AdminProduct }>(`inventory/${productId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ delta, reason }),
+      }),
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Reports
+  // ─────────────────────────────────────────────────────
+  reports: {
+    topProducts: () => adminFetch<{ data: TopProduct[] }>('reports/top-products'),
   },
 
   // ─────────────────────────────────────────────────────

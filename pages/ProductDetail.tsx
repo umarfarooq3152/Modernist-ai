@@ -383,13 +383,23 @@ const ProductDetail: React.FC = () => {
           )}
 
           <div className="space-y-4 pt-6 border-t border-black/10">
+            {product.stock_quantity === 0 && (
+              <div className="w-full py-3 bg-gray-100 text-center text-[10px] uppercase tracking-[0.3em] font-black text-gray-400">
+                This piece is no longer available
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
-               <button 
-                  onClick={() => addToCart(product)}
-                  className="bg-black text-white py-6 text-[11px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border border-black hover:bg-white hover:text-black transition-all group active:scale-95"
+               <button
+                  onClick={() => { if (product.stock_quantity !== 0) addToCart(product); }}
+                  disabled={product.stock_quantity === 0}
+                  className={`py-6 text-[11px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border transition-all group active:scale-95 ${
+                    product.stock_quantity === 0
+                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed active:scale-100'
+                      : 'bg-black text-white border-black hover:bg-white hover:text-black'
+                  }`}
                 >
                   <Plus size={18} />
-                  <span>Add to Bag</span>
+                  <span>{product.stock_quantity === 0 ? 'Sold Out' : 'Add to Bag'}</span>
                 </button>
                 <button 
                   onClick={handleMirrorProjection}
