@@ -15,6 +15,8 @@ import Checkout from './pages/Checkout';
 import OrderHistory from './pages/OrderHistory';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import Search from './pages/Search';
+import Wishlist from './pages/Wishlist';
 import { ProgressiveBlur } from './components/ui/progressive-blur';
 import { motion } from 'framer-motion';
 import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
@@ -384,6 +386,8 @@ const AppContent: React.FC = () => {
           <Route path="/orders" element={<OrderHistory />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/admin/*" element={<Admin />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/wishlist" element={<Wishlist />} />
         </Routes>
       </main>
       {!isAdminPath && <Footer />}

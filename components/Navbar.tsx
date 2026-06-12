@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Search, Menu, X, User, LogOut, Package, ChevronRight, UserCircle } from 'lucide-react';
+import { ShoppingBag, Search, Menu, X, User, LogOut, Package, ChevronRight, UserCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -129,6 +129,22 @@ const Navbar: React.FC = () => {
                 )}
               </div>
 
+              <Link
+                to="/search"
+                className="p-2 hover:bg-black hover:text-white transition-all duration-500 rounded-full active:scale-90 tap-highlight-none"
+                title="Semantic Search"
+              >
+                <Search size={18} strokeWidth={1.5} />
+              </Link>
+
+              <Link
+                to="/wishlist"
+                className="p-2 hover:bg-black hover:text-white transition-all duration-500 rounded-full active:scale-90 tap-highlight-none"
+                title="Wishlist"
+              >
+                <Heart size={18} strokeWidth={1.5} />
+              </Link>
+
               <button onClick={toggleCart} className="relative p-2 hover:bg-black hover:text-white transition-all duration-500 rounded-full active:scale-90 tap-highlight-none">
                 <ShoppingBag size={18} strokeWidth={1.5} />
                 {cartCount > 0 && (
@@ -193,6 +209,18 @@ const Navbar: React.FC = () => {
                   <span className="flex items-center gap-3">
                     <Package size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
                     <span>Acquisitions</span>
+                  </span>
+                  <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                </Link>
+
+                <Link
+                  to="/wishlist"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-sm text-black dark:text-gray-200"
+                >
+                  <span className="flex items-center gap-3">
+                    <Heart size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+                    <span>Saved Pieces</span>
                   </span>
                   <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
                 </Link>

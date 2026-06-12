@@ -25,6 +25,7 @@ import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import ReviewSubmission from '../components/ReviewSubmission';
 import Groq from 'groq-sdk';
+import { similarProducts, type RAGResult } from '../lib/ragApi';
 
 // Refined high-performance image component with archival loading state
 const ImageWithPlaceholder: React.FC<{ 
@@ -70,6 +71,7 @@ const ProductDetail: React.FC = () => {
   const [clerkVerdict, setClerkVerdict] = useState<string | null>(null);
   const [isGeneratingVerdict, setIsGeneratingVerdict] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [similarItems, setSimilarItems] = useState<RAGResult[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const fetchProductDetails = useCallback(async () => {
@@ -98,7 +100,18 @@ const ProductDetail: React.FC = () => {
     fetchProductDetails();
     setActiveImageIndex(0);
     setClerkVerdict(null);
+    setSimilarItems([]);
   }, [fetchProductDetails]);
+
+  // Load similar products via server-side pgvector search
+  useEffect(() => {
+    if (!product?.id) return;
+    let cancelled = false;
+    similarProducts(product.id, 4).then(results => {
+      if (!cancelled) setSimilarItems(results);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [product?.id]);
 
   // Generate "The Clerk's Verdict" via Groq (free, fast inference)
   useEffect(() => {
@@ -410,6 +423,58 @@ const ProductDetail: React.FC = () => {
         </div>
       </div>
       
+      {/* Similar Pieces — server-side pgvector similarity search */}
+      {similarItems.length > 0 && (
+        <div className="mt-40 pt-24 border-t border-black">
+          <div className="space-y-16">
+            <div className="flex items-end justify-between">
+              <h2 className="font-serif-elegant text-5xl font-bold uppercase tracking-widest text-black">
+                Similar Pieces
+              </h2>
+              <span className="text-[9px] uppercase tracking-[0.4em] text-gray-300 font-black">
+                Curated by archive intelligence
+              </span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+              {similarItems.map(item => (
+                <Link
+                  key={item.id}
+                  to={`/product/${item.id}`}
+                  className="group block space-y-4 hover:opacity-80 transition-opacity"
+                >
+                  <div className="relative overflow-hidden bg-gray-50 aspect-[3/4]">
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-200">
+                        <span className="text-[10px] uppercase tracking-widest">No image</span>
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 p-3 bg-white/90 backdrop-blur-sm translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                      <span className="text-[8px] uppercase tracking-[0.3em] font-black text-gray-400">
+                        {Math.round(item.similarity * 100)}% match
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-[0.25em] font-black text-black leading-tight line-clamp-2">
+                      {item.name}
+                    </p>
+                    <p className="text-[11px] font-black text-black">${item.price}</p>
+                    <p className="text-[8px] uppercase tracking-widest text-gray-300 font-black">{item.category}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Testimonials Section */}
       <div className="mt-40 pt-24 border-t border-black">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">

@@ -179,6 +179,18 @@ async function handleGetProducts(url: URL): Promise<Response> {
   return json({ data, count, from, to });
 }
 
+async function triggerEmbedding(productId: string, authHeader: string) {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embeddings`, {
+      method: "POST",
+      headers: { Authorization: authHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({ product_ids: [productId] }),
+    });
+  } catch (e: any) {
+    console.warn("Embedding trigger failed (non-fatal):", e.message);
+  }
+}
+
 async function handleCreateProduct(req: Request): Promise<Response> {
   const body = await req.json();
   const { name, description, price, bottom_price, category, image_url, tags } = body;
@@ -192,6 +204,10 @@ async function handleCreateProduct(req: Request): Promise<Response> {
     .single();
 
   if (error) return json({ error: error.message }, 500);
+
+  // Fire-and-forget embedding generation
+  triggerEmbedding(data.id, req.headers.get("Authorization") || "");
+
   return json({ data }, 201);
 }
 
@@ -208,6 +224,13 @@ async function handleUpdateProduct(productId: string, req: Request): Promise<Res
     .single();
 
   if (error) return json({ error: error.message }, 500);
+
+  // Re-embed if text fields changed
+  const textFields = ["name", "description", "category", "tags"];
+  if (Object.keys(updates).some(k => textFields.includes(k))) {
+    triggerEmbedding(productId, req.headers.get("Authorization") || "");
+  }
+
   return json({ data });
 }
 

@@ -4,6 +4,7 @@ import { Plus, ArrowRight, Eye, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
+import WishlistButton from './WishlistButton';
 
 interface ProductCardProps {
   product: Product;
@@ -34,6 +35,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <span className="text-[10px] opacity-80">{reviewCount}</span>
         </div>
         <div className="price-badge">${product.price.toLocaleString()}</div>
+        {/* Wishlist button — top-right corner */}
+        <div className="absolute top-3 right-3 z-10">
+          <WishlistButton
+            productId={product.id}
+            size={14}
+            className="bg-white/80 backdrop-blur-sm p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          />
+        </div>
         <Link to={`/product/${product.id}`} className="block w-full h-full">
           <img
             src={product.image_url}
