@@ -5,12 +5,59 @@ import { X, Bot, ChevronRight, Percent, Camera, Wand2, RefreshCw, Check, Sparkle
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import Groq from 'groq-sdk';
-import { getOllamaChatCompletion } from '../lib/ollama';
 import { Product } from '../types';
 import { getStripe } from '../lib/stripe';
 import { CLERK_SYSTEM_PROMPT } from '../lib/clerkSystemPrompt';
-import { handleGenerateCouponToolCall, type CouponResult } from '../lib/ragIntegration';
 import { semanticSearch as serverSemanticSearch } from '../lib/ragApi';
+
+// ── Coupon result type (inlined — was in ragIntegration.ts) ──
+interface CouponResult {
+  success: boolean;
+  couponCode: string;
+  discountPercent: number;
+  reason: string;
+  refused: boolean;
+  message: string;
+}
+
+function handleGenerateCouponToolCall(
+  args: { code?: string; discount?: number; reason?: string; sentiment?: string },
+  cartItems: { product: Product; quantity: number }[],
+  rudenessScore: number
+): CouponResult {
+  if (typeof args.discount === 'string') args.discount = parseFloat(args.discount as any);
+  const sentiment = (args.sentiment || 'neutral').toLowerCase();
+
+  if (rudenessScore >= 3 || sentiment === 'rude') {
+    const surcharge = Math.min(rudenessScore * 5, 25);
+    return {
+      success: false,
+      couponCode: `RUDE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      discountPercent: -surcharge,
+      reason: 'Attitude surcharge',
+      refused: true,
+      message: `Prices just went up ${surcharge}%. Come back with a better attitude.`,
+    };
+  }
+  if (cartItems.length === 0) {
+    return { success: false, couponCode: '', discountPercent: 0, reason: '', refused: false, message: 'Add some pieces first.' };
+  }
+
+  const total = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const minTotal = cartItems.reduce((s, i) => s + (i.product.bottom_price ?? i.product.price * 0.7) * i.quantity, 0);
+  const maxDiscount = Math.max(0, Math.min(Math.floor(((total - minTotal) / total) * 100), 30));
+
+  const rawDiscount = typeof args.discount === 'number' && !isNaN(args.discount) ? args.discount : 15;
+  const finalDiscount = Math.max(5, Math.min(rawDiscount, maxDiscount));
+  const reason = args.reason || 'valued customer';
+  const prefix = reason.toLowerCase().includes('birthday') ? 'BDAY'
+    : reason.toLowerCase().includes('student') ? 'STUDENT'
+    : reason.toLowerCase().includes('military') ? 'HONOR'
+    : reason.toLowerCase().includes('first') ? 'WELCOME'
+    : 'CLERK';
+  const code = args.code || `${prefix}-${finalDiscount}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  return { success: true, couponCode: code, discountPercent: finalDiscount, reason, refused: false, message: `${finalDiscount}% off granted.` };
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -170,43 +217,12 @@ let lastRequestTimestamp = 0;
 
 
 // GROQ & OLLAMA API KEYS
-const GROQ_API_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GROQ_API_KEY)
-  || (typeof import.meta !== 'undefined' && import.meta.env?.GROQ_API_KEY)
-  || (typeof process !== 'undefined' && process.env?.GROQ_API_KEY)
-  || (typeof process !== 'undefined' && process.env?.VITE_GROQ_API_KEY)
-  || '';
-const OLLAMA_API_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OLLAMA_API_KEY)
-  || (typeof process !== 'undefined' && process.env?.VITE_OLLAMA_API_KEY)
-  || '';
-
-// Log API key status
-if (typeof window !== 'undefined') {
-  console.log('[Clerk] Groq API Key:', GROQ_API_KEY ? `✅ Loaded (${GROQ_API_KEY.substring(0, 7)}...)` : '❌ MISSING - Get one at https://console.groq.com/');
-  console.log('[Clerk] Ollama API Key:', OLLAMA_API_KEY ? `✅ Loaded (${OLLAMA_API_KEY.substring(0, 7)}...)` : '❌ MISSING - Set VITE_OLLAMA_API_KEY in .env');
-}
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
 
 const groqClient = new Groq({
   apiKey: GROQ_API_KEY,
   dangerouslyAllowBrowser: true,
 });
-
-// Switch between Groq and Ollama for chat completions
-async function fetchChatCompletion(messages, provider = 'ollama') {
-  if (provider === 'ollama') {
-    // messages: [{role: 'user'|'assistant', content: string}]
-    const ollamaMessages = messages.map(m => ({ role: m.role, content: m.text || m.content }));
-    const result = await getOllamaChatCompletion(ollamaMessages);
-    // Ollama returns { message: { content: string, ... } }
-    return result?.message?.content || '';
-  } else {
-    // Default: Groq
-    return await groqClient.chat.completions.create({
-      model: 'llama3-70b-8192',
-      messages: messages.map(m => ({ role: m.role, content: m.text || m.content })),
-      stream: false
-    }).then(res => res.choices[0]?.message?.content || '');
-  }
-}
 
 // ══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -222,7 +238,6 @@ const AIChatAgent: React.FC = () => {
   const [showDiscountToast, setShowDiscountToast] = useState<{ code: string, percent: number, reason: string } | null>(null);
   const [userSelfie, setUserSelfie] = useState<string | null>(null);
   const [isProcessingTryOn, setIsProcessingTryOn] = useState(false);
-  const [workingModel, setWorkingModel] = useState<string>(MODEL_FALLBACK_CHAIN[0]);
   const [conversationHistory, setConversationHistory] = useState<{ role: string; text: string }[]>([]);
   const [rudenessScore, setRudenessScore] = useState(0);
   const [negotiationAttempts, setNegotiationAttempts] = useState(0);
@@ -727,7 +742,6 @@ const AIChatAgent: React.FC = () => {
             temperature: 0.7,
             max_tokens: 1024,
           });
-          if (model !== workingModel) setWorkingModel(model);
           return { response, usedModel: model };
         } catch (error: any) {
           const is404 = error?.status === 404 || error.message?.includes('not found');
