@@ -1903,40 +1903,6 @@ CURRENT STATE:
             }]);
           }
           didShowSomething = true;
-        } else if (fnName === 'search_and_show_products') {
-          // REJECT empty queries - this is conversation, not a product dump
-          const query = (args.query || '').trim();
-          if (!query || query.length < 2) {
-            // Don't show products - give a conversational response instead
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: "I curate experiences, not dump catalogs. Give me a style, an occasion, or a budget—and I'll build your look."
-            }]);
-            didShowSomething = true;
-            continue;
-          }
-
-          // Use embedding results if available, else fall back to keyword search
-          let results = embeddingResults.length > 0 ? embeddingResults : semanticSearch(query, args.category);
-          if (results.length > 0) {
-            updateProductFilter({ query: query, category: args.category, productIds: results.map(p => p.id) });
-            // Premium salesperson responses - sell the lifestyle
-            const searchResponses = [
-              `Curated ${results.length} pieces. Grid updated — browse below.`,
-              `${results.length} pieces arranged. Check the grid.`,
-              `Found ${results.length} pieces that command attention. See the grid:`,
-            ];
-            const response = searchResponses[Math.floor(Math.random() * searchResponses.length)];
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: response,
-              products: results // Show all results
-            }]);
-          } else {
-            setMessages(prev => [...prev, { role: 'assistant', text: "Nothing matches that criteria exactly. Refine your vision—give me a style, an occasion, or a budget." }]);
-          }
-          didShowSomething = true;
-
         } else if (fnName === 'add_to_cart') {
           let product = allProducts.find(p => p.id === args.product_id);
           if (!product) {
