@@ -193,13 +193,19 @@ async function triggerEmbedding(productId: string, authHeader: string) {
 
 async function handleCreateProduct(req: Request): Promise<Response> {
   const body = await req.json();
-  const { name, description, price, bottom_price, category, image_url, tags } = body;
+  const { name, description, price, bottom_price, category, image_url, tags, variants } = body;
 
   if (!name || price == null) return json({ error: "name and price are required" }, 400);
 
   const { data, error } = await serviceClient
     .from("products")
-    .insert({ name, description, price, bottom_price: bottom_price ?? price * 0.7, category, image_url, tags: tags || [] })
+    .insert({
+      name, description, price,
+      bottom_price: bottom_price ?? price * 0.7,
+      category, image_url,
+      tags: tags || [],
+      variants: variants || { sizes: [], colors: [] },
+    })
     .select()
     .single();
 
@@ -213,7 +219,7 @@ async function handleCreateProduct(req: Request): Promise<Response> {
 
 async function handleUpdateProduct(productId: string, req: Request): Promise<Response> {
   const body = await req.json();
-  const allowed = ["name", "description", "price", "bottom_price", "category", "image_url", "tags"];
+  const allowed = ["name", "description", "price", "bottom_price", "category", "image_url", "tags", "variants"];
   const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)));
 
   const { data, error } = await serviceClient
@@ -328,6 +334,97 @@ async function handleGetNegotiations(url: URL): Promise<Response> {
 }
 
 // ─────────────────────────────────────────────────────────
+// Coupons
+// ─────────────────────────────────────────────────────────
+
+async function handleGetCoupons(): Promise<Response> {
+  const { data, error } = await serviceClient
+    .from("coupons")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return json({ data });
+}
+
+async function handleCreateCoupon(req: Request): Promise<Response> {
+  const { code, discount_percent, max_uses, expires_at } = await req.json();
+  if (!code || discount_percent == null) return json({ error: "code and discount_percent are required" }, 400);
+  const { data, error } = await serviceClient
+    .from("coupons")
+    .insert({ code: String(code).toUpperCase().trim(), discount_percent, max_uses: max_uses || null, expires_at: expires_at || null })
+    .select()
+    .single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ data }, 201);
+}
+
+async function handleUpdateCoupon(id: string, req: Request): Promise<Response> {
+  const body = await req.json();
+  const allowed = ["code", "discount_percent", "max_uses", "expires_at", "is_active"];
+  const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)));
+  const { data, error } = await serviceClient
+    .from("coupons")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ data });
+}
+
+async function handleDeleteCoupon(id: string): Promise<Response> {
+  const { error } = await serviceClient.from("coupons").delete().eq("id", id);
+  if (error) return json({ error: error.message }, 500);
+  return json({ success: true });
+}
+
+// ─────────────────────────────────────────────────────────
+// Customers / Patrons
+// ─────────────────────────────────────────────────────────
+
+async function handleGetCustomers(url: URL): Promise<Response> {
+  const { from, to, pageSize } = parsePagination(url);
+  const search = url.searchParams.get("search") || "";
+
+  let query = serviceClient
+    .from("profiles")
+    .select("id, email, first_name, last_name, created_at", { count: "exact" })
+    .range(from, to)
+    .order("created_at", { ascending: false });
+
+  if (search) {
+    query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+  }
+
+  const { data: profiles, error, count } = await query;
+  if (error) throw error;
+  if (!profiles || profiles.length === 0) return json({ data: [], count: 0 });
+
+  const profileIds = profiles.map((p: any) => p.id);
+  const { data: orders } = await serviceClient
+    .from("checkouts")
+    .select("user_id, total_amount")
+    .in("user_id", profileIds)
+    .eq("status", "completed");
+
+  const statsMap = new Map<string, { count: number; total: number }>();
+  (orders || []).forEach((o: any) => {
+    const s = statsMap.get(o.user_id) || { count: 0, total: 0 };
+    s.count++;
+    s.total += parseFloat(o.total_amount || "0");
+    statsMap.set(o.user_id, s);
+  });
+
+  const data = profiles.map((p: any) => ({
+    ...p,
+    order_count: statsMap.get(p.id)?.count ?? 0,
+    total_spend: statsMap.get(p.id)?.total ?? 0,
+  }));
+
+  return json({ data, count });
+}
+
+// ─────────────────────────────────────────────────────────
 // Router
 // ─────────────────────────────────────────────────────────
 serve(async (req: Request) => {
@@ -366,6 +463,17 @@ serve(async (req: Request) => {
 
     if (resource === "negotiations" && method === "GET") {
       return await handleGetNegotiations(url);
+    }
+
+    if (resource === "coupons") {
+      if (method === "GET" && !id) return await handleGetCoupons();
+      if (method === "POST") return await handleCreateCoupon(req);
+      if (method === "PATCH" && id) return await handleUpdateCoupon(id, req);
+      if (method === "DELETE" && id) return await handleDeleteCoupon(id);
+    }
+
+    if (resource === "customers" && method === "GET") {
+      return await handleGetCustomers(url);
     }
 
     return json({ error: `Unknown route: ${method} /${resource}` }, 404);

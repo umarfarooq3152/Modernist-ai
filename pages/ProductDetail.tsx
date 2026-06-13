@@ -60,7 +60,7 @@ const ImageWithPlaceholder: React.FC<{
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { allProducts, addToCart, addToast } = useStore();
+  const { allProducts, addToCart, addToCartWithVariant, addToast } = useStore();
   const { user, profile } = useAuth();
   
   const [product, setProduct] = useState<Product | null>(null);
@@ -72,6 +72,8 @@ const ProductDetail: React.FC = () => {
   const [isGeneratingVerdict, setIsGeneratingVerdict] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [similarItems, setSimilarItems] = useState<RAGResult[]>([]);
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const fetchProductDetails = useCallback(async () => {
@@ -101,6 +103,8 @@ const ProductDetail: React.FC = () => {
     setActiveImageIndex(0);
     setClerkVerdict(null);
     setSimilarItems([]);
+    setSelectedSize(null);
+    setSelectedColor(null);
   }, [fetchProductDetails]);
 
   // Load similar products via server-side pgvector search
@@ -382,10 +386,68 @@ const ProductDetail: React.FC = () => {
             </div>
           )}
 
+          {/* Size selector */}
+          {(product.variants?.sizes || []).length > 0 && (
+            <div className="space-y-4 pt-6 border-t border-black/5">
+              <h3 className="text-[10px] uppercase tracking-widest font-black flex items-center gap-2">
+                <span>Select Size</span>
+                {selectedSize && <span className="text-gray-400">— {selectedSize}</span>}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {(product.variants!.sizes || []).map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedSize(selectedSize === size ? null : size)}
+                    className={`px-4 py-2 text-[9px] uppercase tracking-widest font-black border transition-all active:scale-95 ${
+                      selectedSize === size
+                        ? 'bg-black text-white border-black'
+                        : 'bg-white text-black border-black/20 hover:border-black'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Color selector */}
+          {(product.variants?.colors || []).length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-[10px] uppercase tracking-widest font-black flex items-center gap-2">
+                <span>Colorway</span>
+                {selectedColor && <span className="text-gray-400">— {selectedColor}</span>}
+              </h3>
+              <div className="flex flex-wrap gap-4">
+                {(product.variants!.colors || []).map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setSelectedColor(selectedColor === color ? null : color)}
+                    className="flex flex-col items-center gap-1.5"
+                  >
+                    <div
+                      className={`w-6 h-6 rounded-full border-2 transition-all ${selectedColor === color ? 'scale-125 border-black' : 'border-transparent hover:border-black/30'}`}
+                      style={{ backgroundColor: color.toLowerCase() }}
+                    />
+                    <span className={`text-[8px] uppercase tracking-widest font-black ${selectedColor === color ? 'text-black' : 'text-gray-400'}`}>
+                      {color}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 pt-6 border-t border-black/10">
             <div className="grid grid-cols-2 gap-4">
-               <button 
-                  onClick={() => addToCart(product)}
+               <button
+                  onClick={() => {
+                    const sizes = product.variants?.sizes || [];
+                    const colors = product.variants?.colors || [];
+                    if (sizes.length > 0 && !selectedSize) { addToast('Please select a size', 'info'); return; }
+                    if (colors.length > 0 && !selectedColor) { addToast('Please select a colorway', 'info'); return; }
+                    addToCartWithVariant(product, selectedSize || undefined, selectedColor || undefined);
+                  }}
                   className="bg-black text-white py-6 text-[11px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border border-black hover:bg-white hover:text-black transition-all group active:scale-95"
                 >
                   <Plus size={18} />

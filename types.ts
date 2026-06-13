@@ -13,6 +13,11 @@ export interface Review {
   };
 }
 
+export interface ProductVariants {
+  sizes?: string[];
+  colors?: string[];
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -23,6 +28,9 @@ export interface Product {
   image_url: string;
   tags: string[];
   reviews?: Review[];
+  variants?: ProductVariants;
+  stock_quantity?: number;
+  low_stock_threshold?: number;
 }
 
 export interface ClerkLog {
@@ -59,6 +67,9 @@ export interface OrderRecord {
 export interface CartItem {
   product: Product;
   quantity: number;
+  cartKey: string;
+  selectedSize?: string;
+  selectedColor?: string;
   isBundlePart?: boolean;
 }
 
@@ -85,6 +96,7 @@ export type StoreAction =
   | { type: 'SET_PRODUCTS'; payload: Product[] }
   | { type: 'ADD_TO_CART'; payload: Product }
   | { type: 'ADD_TO_CART_QUANTITY'; payload: { product: Product; quantity: number } }
+  | { type: 'ADD_TO_CART_VARIANT'; payload: { product: Product; selectedSize?: string; selectedColor?: string } }
   | { type: 'REMOVE_FROM_CART'; payload: string }
   | { type: 'UPDATE_QUANTITY'; payload: { id: string; quantity: number } }
   | { type: 'TOGGLE_CART' }

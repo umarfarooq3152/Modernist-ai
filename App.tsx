@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Link } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AuthProvider } from './context/AuthContext';
@@ -57,7 +57,14 @@ class ErrorBoundary extends React.Component {
 }
 
 const QuickViewModal: React.FC = () => {
-  const { quickViewProduct, setQuickViewProduct, addToCart } = useStore();
+  const { quickViewProduct, setQuickViewProduct, addToCartWithVariant, addToast } = useStore();
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedSize(null);
+    setSelectedColor(null);
+  }, [quickViewProduct?.id]);
 
   // Close on ESC
   useEffect(() => {
@@ -109,10 +116,54 @@ const QuickViewModal: React.FC = () => {
             </div>
           </div>
 
+          {/* Size selector in quick view */}
+          {(quickViewProduct.variants?.sizes || []).length > 0 && (
+            <div className="space-y-3 border-t border-black/5 dark:border-white/5 pt-6">
+              <p className="text-[10px] uppercase tracking-[0.4em] font-black">
+                Size {selectedSize && <span className="text-gray-400">— {selectedSize}</span>}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(quickViewProduct.variants!.sizes || []).map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedSize(selectedSize === size ? null : size)}
+                    className={`px-3 py-1.5 text-[8px] uppercase tracking-widest font-black border transition-all ${
+                      selectedSize === size ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {(quickViewProduct.variants?.colors || []).length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.4em] font-black">
+                Colorway {selectedColor && <span className="text-gray-400">— {selectedColor}</span>}
+              </p>
+              <div className="flex gap-3">
+                {(quickViewProduct.variants!.colors || []).map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setSelectedColor(selectedColor === color ? null : color)}
+                    title={color}
+                    className={`w-5 h-5 rounded-full border-2 transition-all ${selectedColor === color ? 'scale-125 border-black dark:border-white' : 'border-transparent hover:border-black/30'}`}
+                    style={{ backgroundColor: color.toLowerCase() }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 mt-12">
             <button
               onClick={() => {
-                addToCart(quickViewProduct);
+                const sizes = quickViewProduct.variants?.sizes || [];
+                const colors = quickViewProduct.variants?.colors || [];
+                if (sizes.length > 0 && !selectedSize) { addToast('Please select a size', 'info'); return; }
+                if (colors.length > 0 && !selectedColor) { addToast('Please select a colorway', 'info'); return; }
+                addToCartWithVariant(quickViewProduct, selectedSize || undefined, selectedColor || undefined);
                 setQuickViewProduct(null);
               }}
               className="w-full bg-black dark:bg-white text-white dark:text-black py-6 text-[10px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border border-black dark:border-white hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white transition-all active:scale-95"

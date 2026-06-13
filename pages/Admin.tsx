@@ -1,40 +1,40 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Package,
   MessageSquare,
-  TrendingUp,
   Settings,
   Menu,
   X,
-  Bell,
   Search,
   RefreshCw,
   Plus,
   DollarSign,
   ChevronRight,
-  User,
   ExternalLink,
   Target,
-  BarChart3,
-  Activity,
   Layers,
-  ArrowRight,
   Star,
   ShoppingBag,
   Trash2,
   Edit3,
   ChevronLeft,
   ChevronDown,
-  Check,
   AlertTriangle,
+  ArrowRight,
+  TrendingUp,
+  Check,
   Cpu,
+  Tag,
+  Users,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
-import { adminApi, AdminStats, AdminProduct, AdminReview, AdminOrder, AdminNegotiation } from '../lib/adminApi';
+import { supabase } from '../lib/supabase';
+import { adminApi, AdminStats, AdminProduct, AdminReview, AdminOrder, AdminNegotiation, AdminCoupon, AdminCustomer } from '../lib/adminApi';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -267,7 +267,27 @@ const AdminInventory: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [formData, setFormData] = useState<Partial<AdminProduct>>({
     name: '', category: 'Basics', price: 0, bottom_price: 0, description: '', tags: [],
+    variants: { sizes: [], colors: [] },
   });
+  const [imageUploading, setImageUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `products/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('product-images').upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(path);
+      setFormData(prev => ({ ...prev, image_url: publicUrl }));
+      addToast('Image archived.', 'success');
+    } catch (e: any) {
+      addToast(`Upload failed: ${e.message}`, 'error');
+    } finally {
+      setImageUploading(false);
+    }
+  };
 
   const PAGE_SIZE = 20;
 
@@ -288,13 +308,13 @@ const AdminInventory: React.FC = () => {
 
   const openCreate = () => {
     setEditingProduct(null);
-    setFormData({ name: '', category: 'Basics', price: 0, bottom_price: 0, description: '', tags: [] });
+    setFormData({ name: '', category: 'Basics', price: 0, bottom_price: 0, description: '', tags: [], variants: { sizes: [], colors: [] } });
     setIsModalOpen(true);
   };
 
   const openEdit = (p: AdminProduct) => {
     setEditingProduct(p);
-    setFormData({ name: p.name, category: p.category, price: p.price, bottom_price: p.bottom_price, description: p.description, tags: p.tags, image_url: p.image_url });
+    setFormData({ name: p.name, category: p.category, price: p.price, bottom_price: p.bottom_price, description: p.description, tags: p.tags, image_url: p.image_url, variants: p.variants || { sizes: [], colors: [] } });
     setIsModalOpen(true);
   };
 
@@ -430,7 +450,6 @@ const AdminInventory: React.FC = () => {
             <div className="grid grid-cols-2 gap-6 mb-8">
               {[
                 { label: 'Name', key: 'name', type: 'text' },
-                { label: 'Image URL', key: 'image_url', type: 'text' },
                 { label: 'Price ($)', key: 'price', type: 'number' },
                 { label: 'Floor Price ($)', key: 'bottom_price', type: 'number' },
               ].map(({ label, key, type }) => (
@@ -462,6 +481,63 @@ const AdminInventory: React.FC = () => {
                   onChange={e => setFormData({ ...formData, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
                   className="w-full border-b border-black py-3 text-xs uppercase tracking-widest outline-none bg-transparent"
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] uppercase tracking-[0.4em] font-black">Sizes (comma-separated)</label>
+                <input
+                  type="text"
+                  placeholder="XS, S, M, L, XL"
+                  value={(formData.variants?.sizes || []).join(', ')}
+                  onChange={e => setFormData({ ...formData, variants: { ...formData.variants, sizes: e.target.value.split(',').map(s => s.trim()).filter(Boolean) } })}
+                  className="w-full border-b border-black py-3 text-xs uppercase tracking-widest outline-none bg-transparent"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] uppercase tracking-[0.4em] font-black">Colorways (comma-separated)</label>
+                <input
+                  type="text"
+                  placeholder="Black, White, Navy"
+                  value={(formData.variants?.colors || []).join(', ')}
+                  onChange={e => setFormData({ ...formData, variants: { ...formData.variants, colors: e.target.value.split(',').map(c => c.trim()).filter(Boolean) } })}
+                  className="w-full border-b border-black py-3 text-xs uppercase tracking-widest outline-none bg-transparent"
+                />
+              </div>
+            </div>
+
+            {/* Image upload */}
+            <div className="space-y-3 mb-8">
+              <label className="block text-[10px] uppercase tracking-[0.4em] font-black">Product Image</label>
+              <div className="flex items-start gap-4">
+                {formData.image_url && (
+                  <div className="w-20 h-24 bg-gray-50 overflow-hidden border border-black/10 shrink-0">
+                    <img src={formData.image_url} alt="" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex-1 space-y-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={imageUploading}
+                    className="flex items-center gap-2 border border-black px-4 py-2 text-[9px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white transition-all disabled:opacity-50"
+                  >
+                    <Upload size={10} />
+                    {imageUploading ? 'Uploading...' : 'Upload Image'}
+                  </button>
+                  <input
+                    type="text"
+                    placeholder="OR PASTE IMAGE URL"
+                    value={formData.image_url || ''}
+                    onChange={e => setFormData({ ...formData, image_url: e.target.value })}
+                    className="w-full border-b border-black/20 py-2 text-[9px] uppercase tracking-widest outline-none bg-transparent placeholder:text-gray-300"
+                  />
+                </div>
               </div>
             </div>
             <div className="space-y-2 mb-10">
@@ -984,6 +1060,258 @@ const AdminSimilaritySandbox: React.FC = () => {
 // Root Admin wrapper
 // ─────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────
+// Concessions (Coupon Management)
+// ─────────────────────────────────────────────────────────
+
+const AdminConcessions: React.FC = () => {
+  const { addToast } = useStore();
+  const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({ code: '', discount_percent: 10, max_uses: '', expires_at: '' });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminApi.coupons.list();
+      setCoupons(res.data);
+    } catch (e: any) { addToast(e.message, 'error'); }
+    finally { setLoading(false); }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async () => {
+    if (!formData.code || !formData.discount_percent) { addToast('Code and discount are required', 'error'); return; }
+    try {
+      await adminApi.coupons.create({
+        code: formData.code,
+        discount_percent: Number(formData.discount_percent),
+        max_uses: formData.max_uses ? Number(formData.max_uses) : undefined,
+        expires_at: formData.expires_at || undefined,
+      });
+      addToast('Concession archived.', 'success');
+      setIsModalOpen(false);
+      setFormData({ code: '', discount_percent: 10, max_uses: '', expires_at: '' });
+      load();
+    } catch (e: any) { addToast(e.message, 'error'); }
+  };
+
+  const handleToggle = async (c: AdminCoupon) => {
+    try {
+      await adminApi.coupons.update(c.id, { is_active: !c.is_active });
+      addToast(c.is_active ? 'Concession deactivated.' : 'Concession activated.', 'info');
+      load();
+    } catch (e: any) { addToast(e.message, 'error'); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this concession code?')) return;
+    try {
+      await adminApi.coupons.delete(id);
+      addToast('Concession removed.', 'success');
+      load();
+    } catch (e: any) { addToast(e.message, 'error'); }
+  };
+
+  return (
+    <div className="space-y-12 page-reveal">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black pb-10">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Discount Management</p>
+          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter">Concessions</h1>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={load} className="flex items-center gap-2 border border-black px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white transition-all">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-black text-white px-6 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:opacity-80 transition-all">
+            <Plus size={12} /> New Concession
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-black/10">
+              {['Code', 'Discount', 'Uses', 'Expires', 'Status', 'Actions'].map(h => (
+                <th key={h} className="py-5 pr-4 text-[10px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-black/5">
+            {loading ? [...Array(3)].map((_, i) => (
+              <tr key={i}><td colSpan={6} className="py-4"><div className="h-8 bg-black/5 animate-pulse" /></td></tr>
+            )) : coupons.map(c => (
+              <tr key={c.id} className="group hover:bg-black/[0.02] transition-colors">
+                <td className="py-4 pr-4">
+                  <span className="text-sm font-black tracking-widest font-mono">{c.code}</span>
+                </td>
+                <td className="py-4 pr-4">
+                  <span className="text-2xl font-black">{c.discount_percent}%</span>
+                </td>
+                <td className="py-4 pr-4 text-[10px] font-bold uppercase tracking-widest">
+                  {c.uses_count}{c.max_uses ? ` / ${c.max_uses}` : ' / ∞'}
+                </td>
+                <td className="py-4 pr-4 text-[10px] font-bold text-gray-400">
+                  {c.expires_at ? new Date(c.expires_at).toLocaleDateString() : '—'}
+                </td>
+                <td className="py-4 pr-4">
+                  <StatusBadge status={c.is_active ? 'active' : 'cancelled'} />
+                </td>
+                <td className="py-4 pr-4">
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleToggle(c)}
+                      className="border border-black/10 hover:bg-black hover:text-white transition-all text-[8px] uppercase tracking-widest font-black px-3 py-1.5"
+                    >
+                      {c.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button onClick={() => handleDelete(c.id)} className="p-2 border border-red-200 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!loading && coupons.length === 0 && (
+              <tr><td colSpan={6} className="py-20 text-center text-[10px] text-gray-400 uppercase tracking-widest">No concession codes archived</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-8">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
+          <div className="relative bg-white w-full max-w-lg p-12 border border-black animate-in zoom-in-95 duration-500">
+            <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-black hover:text-white transition-all"><X size={16} /></button>
+            <h2 className="text-3xl font-serif-elegant font-bold uppercase tracking-tighter mb-10">New Concession</h2>
+            <div className="space-y-6">
+              {[
+                { label: 'Code', key: 'code', type: 'text', placeholder: 'ARCHIVE20', transform: (v: string) => v.toUpperCase() },
+                { label: 'Discount %', key: 'discount_percent', type: 'number', placeholder: '20' },
+                { label: 'Max Uses (blank = unlimited)', key: 'max_uses', type: 'number', placeholder: '100' },
+              ].map(({ label, key, type, placeholder, transform }) => (
+                <div key={key} className="space-y-2">
+                  <label className="block text-[10px] uppercase tracking-[0.4em] font-black">{label}</label>
+                  <input
+                    type={type}
+                    placeholder={placeholder}
+                    value={(formData as any)[key]}
+                    onChange={e => setFormData({ ...formData, [key]: transform ? transform(e.target.value) : e.target.value })}
+                    className="w-full border-b border-black py-3 text-xs uppercase tracking-widest outline-none bg-transparent font-mono"
+                  />
+                </div>
+              ))}
+              <div className="space-y-2">
+                <label className="block text-[10px] uppercase tracking-[0.4em] font-black">Expiry Date (optional)</label>
+                <input type="date" value={formData.expires_at} onChange={e => setFormData({ ...formData, expires_at: e.target.value })}
+                  className="w-full border-b border-black py-3 text-xs outline-none bg-transparent" />
+              </div>
+            </div>
+            <button onClick={handleCreate} className="w-full bg-black text-white py-5 text-[10px] uppercase tracking-[0.6em] font-black mt-10 active:scale-95 transition-all">
+              Archive Concession
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
+// Patrons (Customer Management)
+// ─────────────────────────────────────────────────────────
+
+const AdminPatrons: React.FC = () => {
+  const { addToast } = useStore();
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const PAGE_SIZE = 20;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminApi.customers.list({ page, pageSize: PAGE_SIZE, search });
+      setCustomers(res.data);
+      setTotal(res.count);
+    } catch (e: any) { addToast(e.message, 'error'); }
+    finally { setLoading(false); }
+  }, [page, search, addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="space-y-12 page-reveal">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black pb-10">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Patron Registry</p>
+          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter">Patrons</h1>
+        </div>
+        <div className="flex items-center gap-3 border border-black/10 px-4 py-3 bg-white/50">
+          <Search size={14} className="text-gray-400" />
+          <input
+            type="text"
+            placeholder="SEARCH PATRONS..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            className="bg-transparent outline-none text-[10px] uppercase tracking-widest font-black placeholder:text-gray-300 w-48"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-black/10">
+              {['Patron', 'Email', 'Acquisitions', 'Total Spend', 'Joined'].map(h => (
+                <th key={h} className="py-5 pr-4 text-[10px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-black/5">
+            {loading ? [...Array(5)].map((_, i) => (
+              <tr key={i}><td colSpan={5} className="py-4"><div className="h-12 bg-black/5 animate-pulse" /></td></tr>
+            )) : customers.map(c => (
+              <tr key={c.id} className="group hover:bg-black/[0.02] transition-colors">
+                <td className="py-4 pr-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-black flex items-center justify-center text-white text-[10px] font-black uppercase shrink-0">
+                      {(c.first_name?.[0] || c.email?.[0] || '?').toUpperCase()}
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest">
+                      {c.first_name ? `${c.first_name} ${c.last_name || ''}`.trim() : 'Anonymous'}
+                    </span>
+                  </div>
+                </td>
+                <td className="py-4 pr-4 text-[10px] text-gray-500 tracking-widest">{c.email || '—'}</td>
+                <td className="py-4 pr-4">
+                  <span className="text-xl font-black">{c.order_count}</span>
+                </td>
+                <td className="py-4 pr-4 text-sm font-black">${c.total_spend.toLocaleString()}</td>
+                <td className="py-4 pr-4 text-[10px] text-gray-400 font-bold">
+                  {new Date(c.created_at).toLocaleDateString()}
+                </td>
+              </tr>
+            ))}
+            {!loading && customers.length === 0 && (
+              <tr><td colSpan={5} className="py-20 text-center text-[10px] text-gray-400 uppercase tracking-widest">No patrons documented</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
+    </div>
+  );
+};
+
 const Admin: React.FC = () => {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
@@ -1011,6 +1339,8 @@ const Admin: React.FC = () => {
     { path: '/admin/inventory', icon: Package, label: 'Inventory' },
     { path: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
     { path: '/admin/reviews', icon: Star, label: 'Reviews' },
+    { path: '/admin/concessions', icon: Tag, label: 'Concessions' },
+    { path: '/admin/patrons', icon: Users, label: 'Patrons' },
     { path: '/admin/negotiations', icon: MessageSquare, label: 'Haggles' },
     { path: '/admin/sandbox', icon: Layers, label: 'Sandbox' },
     { path: '/admin/settings', icon: Settings, label: 'Protocols' },
@@ -1083,6 +1413,8 @@ const Admin: React.FC = () => {
             <Route path="/orders" element={<AdminOrders />} />
             <Route path="/reviews" element={<AdminReviews />} />
             <Route path="/negotiations" element={<AdminNegotiations />} />
+            <Route path="/concessions" element={<AdminConcessions />} />
+            <Route path="/patrons" element={<AdminPatrons />} />
             <Route path="/sandbox" element={<AdminSimilaritySandbox />} />
             <Route path="/settings" element={<AdminSystemSettings />} />
           </Routes>

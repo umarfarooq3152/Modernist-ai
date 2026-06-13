@@ -33,6 +33,28 @@ export interface AdminProduct {
   image_url: string;
   tags: string[];
   created_at: string;
+  variants?: { sizes?: string[]; colors?: string[] };
+}
+
+export interface AdminCoupon {
+  id: number;
+  code: string;
+  discount_percent: number;
+  max_uses: number | null;
+  uses_count: number;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AdminCustomer {
+  id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string;
+  order_count: number;
+  total_spend: number;
 }
 
 export interface AdminReview {
@@ -212,6 +234,42 @@ export const adminApi = {
       if (params.status) q.set('status', params.status);
       const qs = q.toString();
       return adminFetch<PaginatedResponse<AdminNegotiation>>(`negotiations${qs ? `?${qs}` : ''}`);
+    },
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Coupons / Concessions
+  // ─────────────────────────────────────────────────────
+  coupons: {
+    list: () => adminFetch<{ data: AdminCoupon[] }>('coupons'),
+
+    create: (coupon: { code: string; discount_percent: number; max_uses?: number; expires_at?: string }) =>
+      adminFetch<{ data: AdminCoupon }>('coupons', {
+        method: 'POST',
+        body: JSON.stringify(coupon),
+      }),
+
+    update: (id: number, updates: Partial<Pick<AdminCoupon, 'is_active' | 'discount_percent' | 'max_uses' | 'expires_at' | 'code'>>) =>
+      adminFetch<{ data: AdminCoupon }>(`coupons/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      }),
+
+    delete: (id: number) =>
+      adminFetch<{ success: boolean }>(`coupons/${id}`, { method: 'DELETE' }),
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Customers / Patrons
+  // ─────────────────────────────────────────────────────
+  customers: {
+    list: (params: { page?: number; pageSize?: number; search?: string } = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set('page', String(params.page));
+      if (params.pageSize) q.set('pageSize', String(params.pageSize));
+      if (params.search) q.set('search', params.search);
+      const qs = q.toString();
+      return adminFetch<PaginatedResponse<AdminCustomer>>(`customers${qs ? `?${qs}` : ''}`);
     },
   },
 };
