@@ -711,9 +711,11 @@ const AIChatAgent: React.FC = () => {
 
   const buildCartContext = (): string => {
     if (cart.length === 0) return 'Cart is empty.';
-    return cart.map(item =>
-      `- ${item.product.name} (ID:${item.product.id}) x${item.quantity} @ $${item.product.price} each`
-    ).join('\n') + `\nSubtotal: $${cartSubtotal} | Discount: ${negotiatedDiscount}% | Total: $${cartTotal}`;
+    return cart.map(item => {
+      const variant = [item.selectedSize, item.selectedColor].filter(Boolean).join('/');
+      const variantStr = variant ? ` [${variant}]` : '';
+      return `- ${item.product.name}${variantStr} (ID:${item.product.id}) x${item.quantity} @ $${item.product.price} each`;
+    }).join('\n') + `\nSubtotal: $${cartSubtotal} | Discount: ${negotiatedDiscount}% | Total: $${cartTotal}`;
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -1803,7 +1805,7 @@ const AIChatAgent: React.FC = () => {
         user_id: user?.id, user_email: user?.email,
         user_message: userMessage, clerk_response: `[local:${localResult.intent}]`,
         clerk_sentiment: 'neutral', discount_offered: 0, negotiation_successful: false,
-        cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price })),
+        cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price, size: i.selectedSize, color: i.selectedColor })),
         metadata: { mode: 'local', intent: localResult.intent }
       });
       setLoading(false);
@@ -1840,7 +1842,7 @@ const AIChatAgent: React.FC = () => {
 
 CURRENT STATE:
 - INVENTORY: ${allProducts.length} pieces across Outerwear, Basics, Accessories, Home, Apparel, Footwear
-- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price} × ${i.quantity})`).join(', ')}
+- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => { const v = [i.selectedSize, i.selectedColor].filter(Boolean).join('/'); return `${i.product.name}${v ? ` [${v}]` : ''} ($${i.product.price} × ${i.quantity})`; }).join(', ')}
 - CART TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%${negotiatedDiscount < 0 ? ' (SURCHARGE ACTIVE)' : ''}
 - RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply LUXURY TAX surcharge via generate_coupon with negative %' : ''}
 - NEGOTIATION ATTEMPTS: ${currentNegotiationAttempts}/2 ${currentNegotiationAttempts === 0 ? '🚫 ZERO ATTEMPTS - This is their FIRST discount request. DO NOT call ANY tools except conversational response. Ask probing questions ONLY.' : currentNegotiationAttempts === 1 ? '🚫 ONE ATTEMPT - This is their SECOND discount request. DO NOT call ANY tools except conversational response. Probe deeper, test commitment.' : '✅ TWO+ ATTEMPTS - You may NOW call generate_coupon if they truly deserve it.'}
