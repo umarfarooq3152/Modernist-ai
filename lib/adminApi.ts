@@ -12,6 +12,8 @@ export interface AdminStats {
   totalNegotiations: number;
   totalRevenue: number;
   acceptedNegotiations: number;
+  visitorsToday: number;
+  productViewsToday: number;
   revenueChart: { name: string; revenue: number }[];
   categoryChart: { name: string; value: number }[];
   recentOrders: {
@@ -34,6 +36,8 @@ export interface AdminProduct {
   tags: string[];
   created_at: string;
   variants?: { sizes?: string[]; colors?: string[] };
+  stock_quantity?: number;
+  low_stock_threshold?: number;
 }
 
 export interface AdminCoupon {

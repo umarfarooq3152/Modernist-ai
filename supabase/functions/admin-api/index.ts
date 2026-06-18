@@ -70,6 +70,10 @@ function parsePagination(url: URL): { from: number; to: number; page: number; pa
 // ─────────────────────────────────────────────────────────
 
 async function handleStats(): Promise<Response> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayIso = todayStart.toISOString();
+
   const [
     { count: totalProducts },
     { count: totalOrders },
@@ -78,20 +82,20 @@ async function handleStats(): Promise<Response> {
     { data: revenueData },
     { data: recentOrders },
     { data: categoryData },
+    { count: visitorsToday },
+    { count: productViewsToday },
   ] = await Promise.all([
     serviceClient.from("products").select("*", { count: "exact", head: true }),
     serviceClient.from("checkouts").select("*", { count: "exact", head: true }),
     serviceClient.from("reviews").select("*", { count: "exact", head: true }),
     serviceClient.from("clerk_logs").select("*", { count: "exact", head: true }),
     // Revenue by day (last 7 days)
-    serviceClient.rpc("admin_revenue_by_day").maybeSingle().then(() =>
-      serviceClient
-        .from("checkouts")
-        .select("created_at, total_amount, status")
-        .eq("status", "completed")
-        .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-        .order("created_at")
-    ),
+    serviceClient
+      .from("checkouts")
+      .select("created_at, total_amount, status")
+      .eq("status", "completed")
+      .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order("created_at"),
     // Recent 5 orders
     serviceClient
       .from("checkouts")
@@ -102,6 +106,17 @@ async function handleStats(): Promise<Response> {
     serviceClient
       .from("products")
       .select("category"),
+    // Unique visitor sessions today
+    serviceClient
+      .from("page_views")
+      .select("session_id", { count: "exact", head: true })
+      .gte("created_at", todayIso),
+    // Product page views today (only views with a product_id)
+    serviceClient
+      .from("page_views")
+      .select("*", { count: "exact", head: true })
+      .not("product_id", "is", null)
+      .gte("created_at", todayIso),
   ]);
 
   // Aggregate revenue by day
@@ -144,6 +159,8 @@ async function handleStats(): Promise<Response> {
     totalNegotiations: totalNegotiations || 0,
     totalRevenue,
     acceptedNegotiations: acceptedNegotiations || 0,
+    visitorsToday: visitorsToday || 0,
+    productViewsToday: productViewsToday || 0,
     revenueChart,
     categoryChart,
     recentOrders: (recentOrders || []).map((o: any) => ({
@@ -193,7 +210,7 @@ async function triggerEmbedding(productId: string, authHeader: string) {
 
 async function handleCreateProduct(req: Request): Promise<Response> {
   const body = await req.json();
-  const { name, description, price, bottom_price, category, image_url, tags, variants } = body;
+  const { name, description, price, bottom_price, category, image_url, tags, variants, stock_quantity, low_stock_threshold } = body;
 
   if (!name || price == null) return json({ error: "name and price are required" }, 400);
 
@@ -205,6 +222,8 @@ async function handleCreateProduct(req: Request): Promise<Response> {
       category, image_url,
       tags: tags || [],
       variants: variants || { sizes: [], colors: [] },
+      ...(stock_quantity != null && { stock_quantity }),
+      ...(low_stock_threshold != null && { low_stock_threshold }),
     })
     .select()
     .single();
@@ -219,7 +238,7 @@ async function handleCreateProduct(req: Request): Promise<Response> {
 
 async function handleUpdateProduct(productId: string, req: Request): Promise<Response> {
   const body = await req.json();
-  const allowed = ["name", "description", "price", "bottom_price", "category", "image_url", "tags", "variants"];
+  const allowed = ["name", "description", "price", "bottom_price", "category", "image_url", "tags", "variants", "stock_quantity", "low_stock_threshold"];
   const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)));
 
   const { data, error } = await serviceClient

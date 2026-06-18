@@ -107,6 +107,25 @@ const ProductDetail: React.FC = () => {
     setSelectedColor(null);
   }, [fetchProductDetails]);
 
+  // Page view tracking — fire-and-forget, anon insert
+  useEffect(() => {
+    if (!product?.id) return;
+    let sessionId = sessionStorage.getItem('pv_session');
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem('pv_session', sessionId);
+    }
+    void (async () => {
+      try {
+        await supabase.from('page_views').insert({
+          path: `/product/${product.id}`,
+          product_id: product.id,
+          session_id: sessionId,
+        });
+      } catch {}
+    })();
+  }, [product?.id]);
+
   // Load similar products via server-side pgvector search
   useEffect(() => {
     if (!product?.id) return;
