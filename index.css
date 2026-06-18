@@ -16,6 +16,17 @@
   --bg-color: #050505;
   --text-color: #ffffff;
   --accent-color: #ff3366;
+  /* Theme-aware semantic tokens used throughout components */
+  --bg-primary: #ffffff;
+  --text-primary: #000000;
+  --border-color: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+}
+.dark {
+  --bg-primary: #0a0a0a;
+  --text-primary: #ffffff;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(10, 10, 10, 0.85);
 }
 
 /* REQUIRED: Lenis smooth scrolling styles */

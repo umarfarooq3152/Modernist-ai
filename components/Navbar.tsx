@@ -17,7 +17,7 @@ const Navbar: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const categories = ['All', 'Watches', 'Rings', 'Necklaces', 'Bracelets'];
+  const categories = ['All', 'Watches', 'Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Diamonds'];
 
   // International Standard: Body Scroll Lock
   useEffect(() => {
@@ -65,7 +65,7 @@ const Navbar: React.FC = () => {
               </Link>
             </div>
 
-            <nav className="hidden md:flex items-center space-x-8">
+            <nav className="hidden md:flex items-center space-x-4 lg:space-x-7">
               {categories.map((cat) => (
                 <a
                   key={cat}
@@ -243,7 +243,7 @@ const Navbar: React.FC = () => {
       </AnimatePresence>
 
       {/* MOBILE MENU - High Stack Glassmorphism Full-Screen Overlay */}
-      <div className={`fixed inset-0 z-[150] bg-white/60 backdrop-blur-2xl transition-all duration-700 md:hidden flex flex-col ${isMobileMenuOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'}`}>
+      <div className={`fixed inset-0 z-[150] bg-white/95 dark:bg-black/95 backdrop-blur-2xl transition-all duration-700 md:hidden flex flex-col ${isMobileMenuOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'}`}>
         <div className="h-16 shrink-0" /> {/* Spacer for top bar */}
 
         <div className="flex-1 overflow-y-auto no-scrollbar p-8 pt-12 space-y-12">
@@ -254,7 +254,7 @@ const Navbar: React.FC = () => {
                 <button
                   key={cat}
                   onClick={() => { filterByCategory(cat); setIsMobileMenuOpen(false); }}
-                  className="text-4xl font-serif-elegant font-bold uppercase tracking-tight text-left hover:italic transition-all active:scale-95 origin-left tap-highlight-none"
+                  className="text-3xl sm:text-4xl font-serif-elegant font-bold uppercase tracking-tight text-left text-black dark:text-white hover:italic transition-all active:scale-95 origin-left tap-highlight-none"
                   style={{ transitionDelay: `${idx * 40}ms` }}
                 >
                   {cat}
@@ -295,7 +295,7 @@ const Navbar: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-8 border-t border-black/5 flex justify-center bg-white/30">
+        <div className="p-8 border-t border-black/5 dark:border-white/5 flex justify-center bg-white/20 dark:bg-black/20">
           <p className="text-[8px] uppercase tracking-[0.4em] text-gray-400 font-bold">MODERNIST permanent archive © 2024</p>
         </div>
       </div>

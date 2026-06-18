@@ -238,7 +238,7 @@ const ProductGrid: React.FC = () => {
       <div className="mb-12 md:mb-20 border-b border-black dark:border-white pb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-10">
         <div className="relative group flex-1">
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 dark:text-gray-500 font-bold mb-6">Archival Collection</p>
-          <h1 className="font-serif-elegant text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter uppercase leading-[0.9] truncate max-w-[90vw]">
+          <h1 className="font-serif-elegant text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter uppercase leading-[0.9] break-words">
             {activeVibe ? (
               <span className="themed-badge">{activeVibe}</span>
             ) : (
@@ -270,7 +270,7 @@ const ProductGrid: React.FC = () => {
         </div>
 
         <div className="flex flex-col items-start lg:items-end gap-8 w-full lg:w-auto">
-          <div className="flex items-center space-x-8 text-[10px] uppercase tracking-widest font-black border border-black/10 dark:border-white/10 px-6 py-4 w-full sm:w-auto bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+          <div className="flex items-center space-x-4 md:space-x-8 text-[10px] uppercase tracking-widest font-black border border-black/10 dark:border-white/10 px-4 md:px-6 py-4 w-full sm:w-auto bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
             <SlidersHorizontal size={14} />
             <button onClick={() => setSortOrder('price-low')} className={`transition-opacity ${sortOrder === 'price-low' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: Low</button>
             <button onClick={() => setSortOrder('price-high')} className={`transition-opacity ${sortOrder === 'price-high' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: High</button>
@@ -309,8 +309,8 @@ const ProductGrid: React.FC = () => {
 const PhilosophySection: React.FC = () => {
   return (
     <section className="bg-white text-black dark:bg-black dark:text-white">
-      <div className="max-w-[1400px] mx-auto px-6 md:px-8 py-40">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-32 items-center">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 md:px-8 py-16 md:py-32">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -319,13 +319,13 @@ const PhilosophySection: React.FC = () => {
           className="space-y-16"
         >
           <div className="space-y-8">
-            <span className="text-[10px] uppercase tracking-[0.8em] text-gray-400 dark:text-gray-500 font-bold block">Permanent Collection</span>
-            <h2 className="font-serif text-5xl md:text-8xl font-black leading-[0.85] tracking-tighter uppercase text-black dark:text-white">
-                <span className="themed-badge">Minimal</span> <br /> <span className="themed-badge">Landscape.</span>
+            <span className="text-[10px] uppercase tracking-[0.8em] text-gray-400 dark:text-gray-500 font-bold block">Fine Jewellery Archive</span>
+            <h2 className="font-serif text-5xl md:text-7xl font-black leading-[0.85] tracking-tighter uppercase text-black dark:text-white">
+                <span className="themed-badge">Rare</span> <br /> <span className="themed-badge">Stones.</span>
               </h2>
           </div>
-          <p className="text-sm md:text-xl text-gray-500 dark:text-gray-400 leading-relaxed max-w-lg font-light italic">
-            "A curated response to the transient landscape. We document essentials that define the permanent silhouette."
+          <p className="text-sm md:text-lg text-gray-500 dark:text-gray-400 leading-relaxed max-w-md font-light italic">
+            "A curated archive of fine diamonds, precious metals, and certified stones. Each piece selected for permanence."
           </p>
           <div className="flex items-center gap-12 pt-4">
             <div className="w-20 h-[1px] bg-black/20 dark:bg-white/20"></div>
@@ -333,12 +333,12 @@ const PhilosophySection: React.FC = () => {
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-1px bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+        <div className="grid grid-cols-2 gap-px bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
           {[
-            { label: 'Arithmetic', desc: 'Precision in every documented ratio.' },
-            { label: 'Neutral', desc: 'A palette of absolute archival silence.' },
-            { label: 'Eternal', desc: 'Silhouettes detached from temporal drift.' },
-            { label: 'Tactile', desc: 'The felt weight of artisanal craft.' }
+            { label: 'Brilliant', desc: 'Every facet cut to optical perfection.' },
+            { label: 'Eternal', desc: 'Stones that outlast every season.' },
+            { label: 'Precise', desc: 'GIA certified. Nothing left to chance.' },
+            { label: 'Tactile', desc: 'The felt weight of precious metal.' }
           ].map((item, i) => (
             <motion.div
               key={item.label}
@@ -346,7 +346,7 @@ const PhilosophySection: React.FC = () => {
               whileInView={{ opacity: 1 }}
               transition={{ duration: 1, delay: i * 0.15 }}
               viewport={{ once: true }}
-              className="bg-white dark:bg-black p-12 space-y-6 hover:bg-gray-50 dark:hover:bg-zinc-950 transition-colors"
+              className="bg-white dark:bg-black p-6 md:p-10 space-y-3 md:space-y-5 hover:bg-gray-50 dark:hover:bg-zinc-950 transition-colors"
             >
               <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-black dark:text-white">{item.label}</h3>
               <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-loose font-medium">{item.desc}</p>
@@ -369,9 +369,9 @@ const HomePage: React.FC = () => {
 };
 
 const Footer: React.FC = () => (
-  <footer className="bg-black text-white pt-32 pb-16 mt-32 relative z-10">
+  <footer className="bg-black text-white pt-16 pb-10 mt-16 md:pt-32 md:pb-16 md:mt-32 relative z-10">
     <div className="max-w-[1400px] mx-auto px-6 md:px-8">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-16 pb-24 border-b border-white/10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-12 lg:gap-16 pb-12 md:pb-20 border-b border-white/10">
         <div className="space-y-8">
           <h2 className="font-serif-elegant text-4xl font-bold tracking-[0.2em] text-white uppercase">MODERNIST</h2>
           <p className="text-[11px] leading-loose text-gray-500 uppercase tracking-[0.3em] font-bold italic">

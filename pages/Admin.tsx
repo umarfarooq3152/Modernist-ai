@@ -296,7 +296,7 @@ const AdminDashboard: React.FC = () => {
 // Inventory (server-side paginated)
 // ─────────────────────────────────────────────────────────
 
-const CATEGORIES = ['Basics', 'Outerwear', 'Accessories', 'Apparel', 'Footwear', 'Jewelry', 'Home'];
+const CATEGORIES = ['Watches', 'Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Diamonds', 'Basics', 'Outerwear', 'Accessories', 'Apparel', 'Footwear', 'Jewelry', 'Home'];
 
 const AdminInventory: React.FC = () => {
   const { addToast } = useStore();
