@@ -249,52 +249,71 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isSyncingERP, setIsSyncingERP] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const attemptFetch = async (attempt: number): Promise<boolean> => {
+      const TIMEOUT_MS = attempt === 1 ? 8000 : 20000;
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), TIMEOUT_MS)
+      );
+
+      const [productsResult, reviewsResult] = await Promise.race([
+        Promise.all([
+          // TODO(Step-2): hide bottom_price behind RLS once AI negotiation moves server-side
+          supabase.from('products').select('*'),
+          supabase.from('reviews').select('*')
+        ]),
+        timeoutPromise
+      ]) as any;
+
+      const { data: productsData, error: productsError } = productsResult;
+      const { data: reviewsData, error: reviewsError } = reviewsResult;
+
+      if (productsData && !productsError && productsData.length > 0) {
+        const reviewsByProduct = new Map<string, Review[]>();
+        if (reviewsData && !reviewsError) {
+          reviewsData.forEach((review: Review) => {
+            if (!reviewsByProduct.has(review.product_id)) {
+              reviewsByProduct.set(review.product_id, []);
+            }
+            reviewsByProduct.get(review.product_id)!.push(review);
+          });
+        }
+
+        const productsWithReviews = productsData.map((product: Product) => ({
+          ...product,
+          reviews: reviewsByProduct.get(product.id) || []
+        }));
+
+        if (!cancelled) dispatch({ type: 'SET_PRODUCTS', payload: productsWithReviews });
+        return true;
+      }
+      return false;
+    };
+
     const fetchProducts = async () => {
       setIsInitialLoading(true);
       try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), 5000)
-        );
-
-        const [productsResult, reviewsResult] = await Promise.race([
-          Promise.all([
-            // TODO(Step-2): hide bottom_price behind RLS once AI negotiation moves server-side
-            supabase.from('products').select('*'),
-            supabase.from('reviews').select('*')
-          ]),
-          timeoutPromise
-        ]) as any;
-
-        const { data: productsData, error: productsError } = productsResult;
-        const { data: reviewsData, error: reviewsError } = reviewsResult;
-
-        if (productsData && !productsError && productsData.length > 0) {
-          // Create a map of reviews by product_id
-          const reviewsByProduct = new Map<string, Review[]>();
-          if (reviewsData && !reviewsError) {
-            reviewsData.forEach((review: Review) => {
-              if (!reviewsByProduct.has(review.product_id)) {
-                reviewsByProduct.set(review.product_id, []);
-              }
-              reviewsByProduct.get(review.product_id)!.push(review);
-            });
-          }
-
-          // Attach reviews to products
-          const productsWithReviews = productsData.map((product: Product) => ({
-            ...product,
-            reviews: reviewsByProduct.get(product.id) || []
-          }));
-
-          dispatch({ type: 'SET_PRODUCTS', payload: productsWithReviews });
+        const ok = await attemptFetch(1);
+        if (!ok && !cancelled) {
+          // Supabase project may be cold-starting — retry once with a longer timeout
+          await attemptFetch(2);
         }
       } catch (e) {
-        console.error("Supabase load failed (or timed out), falling back to local data", e);
+        if (!cancelled) {
+          try {
+            await attemptFetch(2);
+          } catch (e2) {
+            console.error('Supabase load failed after retry:', e2);
+          }
+        }
       } finally {
-        setIsInitialLoading(false);
+        if (!cancelled) setIsInitialLoading(false);
       }
     };
+
     fetchProducts();
+    return () => { cancelled = true; };
   }, []);
 
   const cartSubtotal = useMemo(() => state.cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0), [state.cart]);

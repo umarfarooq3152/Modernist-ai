@@ -408,6 +408,20 @@ const AdminInventory: React.FC = () => {
     }
   };
 
+  const [backfilling, setBackfilling] = useState(false);
+
+  const handleBackfillEmbeddings = async () => {
+    setBackfilling(true);
+    try {
+      const res = await adminApi.embeddings.backfill();
+      addToast(res.message, 'success');
+    } catch (e: any) {
+      addToast(e.message, 'error');
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   const SortIcon = ({ field }: { field: 'name' | 'price' | 'created_at' }) => (
     sortField === field
       ? <span className="ml-1 opacity-70">{sortOrder === 'asc' ? '↑' : '↓'}</span>
@@ -421,7 +435,10 @@ const AdminInventory: React.FC = () => {
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Backend-Managed</p>
           <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Inventory</h1>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={handleBackfillEmbeddings} disabled={backfilling} className="flex items-center gap-2 border border-black/30 dark:border-white/20 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all disabled:opacity-40">
+            <Cpu size={12} className={backfilling ? 'animate-pulse' : ''} /> {backfilling ? 'Embedding...' : 'Regen Embeddings'}
+          </button>
           <button onClick={load} className="flex items-center gap-2 border border-black dark:border-white/30 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all">
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>

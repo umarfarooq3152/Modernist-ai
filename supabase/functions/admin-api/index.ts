@@ -443,6 +443,27 @@ async function handleGetCustomers(url: URL): Promise<Response> {
   return json({ data, count });
 }
 
+async function handleBackfillEmbeddings(req: Request): Promise<Response> {
+  const { data: products, error } = await serviceClient
+    .from("products")
+    .select("id")
+    .is("embedding", null);
+
+  if (error) return json({ error: error.message }, 500);
+  if (!products || products.length === 0) return json({ queued: 0, message: "All products already have embeddings." });
+
+  const productIds = products.map((p: { id: string }) => p.id);
+
+  // Forward to generate-embeddings using the caller's admin token
+  void fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embeddings`, {
+    method: "POST",
+    headers: { Authorization: req.headers.get("Authorization") || "", "Content-Type": "application/json" },
+    body: JSON.stringify({ product_ids: productIds }),
+  }).catch((e: any) => console.warn("backfill trigger failed:", e.message));
+
+  return json({ queued: productIds.length, message: `Embedding ${productIds.length} product(s) in the background.` });
+}
+
 // ─────────────────────────────────────────────────────────
 // Router
 // ─────────────────────────────────────────────────────────
@@ -493,6 +514,10 @@ serve(async (req: Request) => {
 
     if (resource === "customers" && method === "GET") {
       return await handleGetCustomers(url);
+    }
+
+    if (resource === "backfill-embeddings" && method === "POST") {
+      return await handleBackfillEmbeddings(req);
     }
 
     return json({ error: `Unknown route: ${method} /${resource}` }, 404);

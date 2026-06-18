@@ -276,4 +276,11 @@ export const adminApi = {
       return adminFetch<PaginatedResponse<AdminCustomer>>(`customers${qs ? `?${qs}` : ''}`);
     },
   },
+
+  // ─────────────────────────────────────────────────────
+  // Embeddings
+  // ─────────────────────────────────────────────────────
+  embeddings: {
+    backfill: () => adminFetch<{ queued: number; message: string }>('backfill-embeddings', { method: 'POST' }),
+  },
 };
