@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Link } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AuthProvider } from './context/AuthContext';
@@ -17,6 +17,7 @@ import Profile from './pages/Profile';
 import Admin from './pages/Admin';
 import Search from './pages/Search';
 import Wishlist from './pages/Wishlist';
+import PasswordReset from './pages/PasswordReset';
 import { ProgressiveBlur } from './components/ui/progressive-blur';
 import { motion } from 'framer-motion';
 import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
@@ -57,7 +58,14 @@ class ErrorBoundary extends React.Component {
 }
 
 const QuickViewModal: React.FC = () => {
-  const { quickViewProduct, setQuickViewProduct, addToCart } = useStore();
+  const { quickViewProduct, setQuickViewProduct, addToCartWithVariant, addToast } = useStore();
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedSize(null);
+    setSelectedColor(null);
+  }, [quickViewProduct?.id]);
 
   // Close on ESC
   useEffect(() => {
@@ -102,23 +110,67 @@ const QuickViewModal: React.FC = () => {
             </div>
 
             <div className="border-t border-black/5 dark:border-white/5 pt-8 space-y-4">
-              <p className="text-[10px] uppercase tracking-[0.5em] text-gray-400 dark:text-gray-500 font-black">Archival Inspection</p>
+              <p className="text-[10px] uppercase tracking-[0.5em] text-gray-400 dark:text-gray-500 font-black">About This Piece</p>
               <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400 font-clerk italic">
                 "{quickViewProduct.description} This documented silhouette represents a permanent staple in our curated landscape."
               </p>
             </div>
           </div>
 
+          {/* Size selector in quick view */}
+          {(quickViewProduct.variants?.sizes || []).length > 0 && (
+            <div className="space-y-3 border-t border-black/5 dark:border-white/5 pt-6">
+              <p className="text-[10px] uppercase tracking-[0.4em] font-black">
+                Size {selectedSize && <span className="text-gray-400">— {selectedSize}</span>}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(quickViewProduct.variants!.sizes || []).map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedSize(selectedSize === size ? null : size)}
+                    className={`px-3 py-1.5 text-[8px] uppercase tracking-widest font-black border transition-all ${
+                      selectedSize === size ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {(quickViewProduct.variants?.colors || []).length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.4em] font-black">
+                Colorway {selectedColor && <span className="text-gray-400">— {selectedColor}</span>}
+              </p>
+              <div className="flex gap-3">
+                {(quickViewProduct.variants!.colors || []).map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setSelectedColor(selectedColor === color ? null : color)}
+                    title={color}
+                    className={`w-5 h-5 rounded-full border-2 transition-all ${selectedColor === color ? 'scale-125 border-black dark:border-white' : 'border-transparent hover:border-black/30'}`}
+                    style={{ backgroundColor: color.toLowerCase() }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 mt-12">
             <button
               onClick={() => {
-                addToCart(quickViewProduct);
+                const sizes = quickViewProduct.variants?.sizes || [];
+                const colors = quickViewProduct.variants?.colors || [];
+                if (sizes.length > 0 && !selectedSize) { addToast('Please select a size', 'info'); return; }
+                if (colors.length > 0 && !selectedColor) { addToast('Please select a colorway', 'info'); return; }
+                addToCartWithVariant(quickViewProduct, selectedSize || undefined, selectedColor || undefined);
                 setQuickViewProduct(null);
               }}
               className="w-full bg-black dark:bg-white text-white dark:text-black py-6 text-[10px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border border-black dark:border-white hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white transition-all active:scale-95"
             >
               <Plus size={16} />
-              <span>Add to Archive Bag</span>
+              <span>Add to Bag</span>
             </button>
 
             <Link
@@ -127,7 +179,7 @@ const QuickViewModal: React.FC = () => {
               className="w-full border border-black/10 dark:border-white/10 py-6 text-[10px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-95"
             >
               <ExternalLink size={16} />
-              <span>Full Archive Entry</span>
+              <span>View Full Details</span>
             </Link>
           </div>
         </div>
@@ -176,7 +228,7 @@ const ProductGrid: React.FC = () => {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center space-y-8 page-reveal">
         <div className="modern-loader" />
-        <p className="text-[10px] uppercase tracking-[0.6em] font-black text-gray-400 dark:text-gray-500 animate-pulse">Syncing Archival Collection...</p>
+        <p className="text-[10px] uppercase tracking-[0.6em] font-black text-gray-400 dark:text-gray-500 animate-pulse">Loading collection...</p>
       </div>
     );
   }
@@ -186,17 +238,9 @@ const ProductGrid: React.FC = () => {
       <div id="products-section" className="relative max-w-[1400px] mx-auto px-4 md:px-8 py-8 md:py-20 page-reveal overflow-hidden bg-[color:var(--bg-primary)]">
       <div className="mb-12 md:mb-20 border-b border-black dark:border-white pb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-10">
         <div className="relative group flex-1">
-          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 dark:text-gray-500 font-bold mb-6">Archival Collection</p>
-          <h1 className="font-serif-elegant text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter uppercase leading-[0.9] truncate max-w-[90vw]">
-            {activeVibe ? (
-              <span className="themed-badge">{activeVibe}</span>
-            ) : (
-              currentCategory === 'All' ? (
-                <span className="themed-badge">Selection</span>
-              ) : (
-                <span className="themed-badge">{currentCategory}</span>
-              )
-            )}
+          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 dark:text-gray-500 font-bold mb-6">Our Collection</p>
+          <h1 className="font-serif text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter uppercase leading-[0.9] break-words text-black dark:text-white">
+            {activeVibe ? activeVibe : (currentCategory === 'All' ? 'Selection' : currentCategory)}
           </h1>
 
           <div className="flex items-center gap-5 mt-10">
@@ -206,28 +250,28 @@ const ProductGrid: React.FC = () => {
                 className="flex items-center gap-3 bg-black dark:bg-white text-white dark:text-black px-6 py-3 text-[9px] uppercase tracking-[0.4em] font-black hover:bg-gray-800 dark:hover:bg-gray-200 transition-all active:scale-95 tap-highlight-none"
               >
                 <RefreshCcw size={12} />
-                <span>Reset Resonance</span>
+                <span>Clear Filter</span>
               </button>
             )}
             {isCurating && (
               <div className="flex items-center gap-3 text-black dark:text-white animate-pulse">
                 <div className="w-2 h-2 bg-black dark:bg-white rounded-full"></div>
-                <span className="text-[10px] uppercase tracking-[0.5em] font-black">Synchronizing...</span>
+                <span className="text-[10px] uppercase tracking-[0.5em] font-black">Updating...</span>
               </div>
             )}
           </div>
         </div>
 
         <div className="flex flex-col items-start lg:items-end gap-8 w-full lg:w-auto">
-          <div className="flex items-center space-x-8 text-[10px] uppercase tracking-widest font-black border border-black/10 dark:border-white/10 px-6 py-4 w-full sm:w-auto bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+          <div className="flex items-center space-x-4 md:space-x-8 text-[10px] uppercase tracking-widest font-black border border-black/10 dark:border-white/10 px-4 md:px-6 py-4 w-full sm:w-auto bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
             <SlidersHorizontal size={14} />
             <button onClick={() => setSortOrder('price-low')} className={`transition-opacity ${sortOrder === 'price-low' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: Low</button>
             <button onClick={() => setSortOrder('price-high')} className={`transition-opacity ${sortOrder === 'price-high' ? 'text-black dark:text-white underline underline-offset-4' : 'text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white'}`}>Price: High</button>
           </div>
           <p className="hidden lg:block text-[11px] uppercase tracking-[0.4em] font-bold text-gray-400 max-w-xs text-right leading-loose italic">
             {activeVibe
-              ? `Archival synchronization for intent: "${activeVibe}".`
-              : "Documented lifestyle staples. Crafted for permanent silhouettes."}
+              ? `Showing results for "${activeVibe}"`
+              : "Fine jewellery. Crafted to last."}
           </p>
         </div>
       </div>
@@ -236,8 +280,8 @@ const ProductGrid: React.FC = () => {
         {products.length === 0 ? (
           <div className="py-40 text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-1000">
             <div className="w-16 h-[1px] bg-black/20 mb-12"></div>
-            <p className="text-xs uppercase tracking-[0.5em] text-gray-300 font-bold mb-10 italic">Zero documented archival matches.</p>
-            <button onClick={resetArchive} className="border border-black px-12 py-6 text-[10px] font-black uppercase tracking-[0.5em] hover:bg-black hover:text-white transition-all active:scale-95">Reset Selection</button>
+            <p className="text-xs uppercase tracking-[0.5em] text-gray-300 font-bold mb-10 italic">No products found.</p>
+            <button onClick={resetArchive} className="border border-black px-12 py-6 text-[10px] font-black uppercase tracking-[0.5em] hover:bg-black hover:text-white transition-all active:scale-95">Clear Filter</button>
           </div>
         ) : (
           <div key={`${products.length}-${products[0]?.id}-${products[products.length - 1]?.id}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 md:gap-x-12 gap-y-16 md:gap-y-24">
@@ -257,84 +301,114 @@ const ProductGrid: React.FC = () => {
 
 const PhilosophySection: React.FC = () => {
   return (
-    <section className="bg-white text-black dark:bg-black dark:text-white">
-      <div className="max-w-[1400px] mx-auto px-6 md:px-8 py-40">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-32 items-center">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
-          viewport={{ once: true }}
-          className="space-y-16"
-        >
-          <div className="space-y-8">
-            <span className="text-[10px] uppercase tracking-[0.8em] text-gray-400 dark:text-gray-500 font-bold block">Permanent Collection</span>
-            <h2 className="font-serif text-5xl md:text-8xl font-black leading-[0.85] tracking-tighter uppercase text-black dark:text-white">
-                <span className="themed-badge">Minimal</span> <br /> <span className="themed-badge">Landscape.</span>
-              </h2>
-          </div>
-          <p className="text-sm md:text-xl text-gray-500 dark:text-gray-400 leading-relaxed max-w-lg font-light italic">
-            "A curated response to the transient landscape. We document essentials that define the permanent silhouette."
-          </p>
-          <div className="flex items-center gap-12 pt-4">
-            <div className="w-20 h-[1px] bg-black/20 dark:bg-white/20"></div>
-            <span className="text-[10px] uppercase tracking-[0.5em] font-black text-black dark:text-white opacity-40 hover:opacity-100 transition-opacity cursor-pointer">View Archive</span>
-          </div>
-        </motion.div>
+    <section className="bg-white dark:bg-black border-b border-black/5 dark:border-white/5">
+      <div className="max-w-[1400px] mx-auto px-6 md:px-16 py-24 md:py-40">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-20 lg:gap-32 items-start">
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-1px bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
-          {[
-            { label: 'Arithmetic', desc: 'Precision in every documented ratio.' },
-            { label: 'Neutral', desc: 'A palette of absolute archival silence.' },
-            { label: 'Eternal', desc: 'Silhouettes detached from temporal drift.' },
-            { label: 'Tactile', desc: 'The felt weight of artisanal craft.' }
-          ].map((item, i) => (
-            <motion.div
-              key={item.label}
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              transition={{ duration: 1, delay: i * 0.15 }}
-              viewport={{ once: true }}
-              className="bg-white dark:bg-black p-12 space-y-6 hover:bg-gray-50 dark:hover:bg-zinc-950 transition-colors"
+          {/* Left: editorial copy */}
+          <motion.div
+            initial={{ opacity: 0, y: 32 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+            viewport={{ once: true }}
+            className="space-y-12 lg:sticky lg:top-32"
+          >
+            <p className="text-[10px] uppercase tracking-[0.8em] text-gray-400 dark:text-gray-600 font-medium">Fine Jewellery</p>
+            <h2
+              className="text-5xl md:text-6xl lg:text-7xl font-light leading-[0.9] tracking-tight text-black dark:text-white"
+              style={{ fontFamily: 'var(--font-primary)' }}
             >
-              <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-black dark:text-white">{item.label}</h3>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-loose font-medium">{item.desc}</p>
-            </motion.div>
-          ))}
+              Rare<br />Stones.
+            </h2>
+            <p
+              className="text-base md:text-lg text-gray-500 dark:text-gray-400 leading-[1.8] max-w-sm font-light"
+              style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic' }}
+            >
+              A curated archive of fine diamonds, precious metals, and certified stones.
+              Each piece selected for permanence — not for seasons.
+            </p>
+            <div className="flex items-center gap-8 pt-2">
+              <div className="w-16 h-px bg-black/15 dark:bg-white/15" />
+              <span className="text-[10px] uppercase tracking-[0.5em] font-semibold text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white transition-colors cursor-pointer">
+                Browse Collection
+              </span>
+            </div>
+          </motion.div>
+
+          {/* Right: attribute grid */}
+          <div className="grid grid-cols-2 gap-px bg-black/5 dark:bg-white/[0.06]">
+            {[
+              { num: '01', label: 'Brilliant', desc: 'Every facet cut to optical perfection.' },
+              { num: '02', label: 'Eternal', desc: 'Stones that outlast every season.' },
+              { num: '03', label: 'Precise', desc: 'GIA certified. Nothing left to chance.' },
+              { num: '04', label: 'Tactile', desc: 'The felt weight of precious metal.' },
+            ].map((item, i) => (
+              <motion.div
+                key={item.label}
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                transition={{ duration: 0.8, delay: i * 0.1 }}
+                viewport={{ once: true }}
+                className="bg-white dark:bg-black p-8 md:p-12 space-y-4 hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors group"
+              >
+                <span className="text-[10px] text-gray-300 dark:text-gray-700 font-medium tracking-widest">{item.num}</span>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-black dark:text-white group-hover:tracking-[0.45em] transition-all duration-500">{item.label}</h3>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-loose font-light">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
         </div>
-      </div>
       </div>
     </section>
   );
 };
 
+const TICKER_ITEMS = [
+  'Fine Jewellery', 'GIA Certified', 'Permanent Archive', 'Precious Metals',
+  'Est. 2024', 'Ethically Sourced', 'Artisan Craft', 'Rare Stones', 'Timeless Design',
+];
+
+const MarqueeTicker: React.FC = () => (
+  <div className="overflow-hidden border-y border-black/5 dark:border-white/5 bg-white dark:bg-black py-4 select-none">
+    <div className="flex whitespace-nowrap" style={{ animation: 'marquee 28s linear infinite' }}>
+      {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
+        <span key={i} className="inline-flex items-center gap-6 px-6 text-[10px] uppercase tracking-[0.45em] font-medium text-black/30 dark:text-white/25">
+          {item}
+          <span className="w-1 h-1 bg-black/20 dark:bg-white/20 rounded-full" />
+        </span>
+      ))}
+    </div>
+  </div>
+);
+
 const HomePage: React.FC = () => {
   return (
     <HeroSection>
       <PhilosophySection />
+      <MarqueeTicker />
       <ProductGrid />
     </HeroSection>
   );
 };
 
 const Footer: React.FC = () => (
-  <footer className="bg-black text-white pt-32 pb-16 mt-32 relative z-10">
+  <footer className="bg-black text-white pt-20 pb-10 md:pt-28 md:pb-16 relative z-10">
     <div className="max-w-[1400px] mx-auto px-6 md:px-8">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-16 pb-24 border-b border-white/10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-12 lg:gap-16 pb-12 md:pb-20 border-b border-white/10">
         <div className="space-y-8">
           <h2 className="font-serif-elegant text-4xl font-bold tracking-[0.2em] text-white uppercase">MODERNIST</h2>
           <p className="text-[11px] leading-loose text-gray-500 uppercase tracking-[0.3em] font-bold italic">
-            Ethically Archival. <br />
-            Artisanally Synchronized. <br />
-            Timelessly Curated.
+            Ethically Sourced. <br />
+            Artisan Made. <br />
+            Built to Last.
           </p>
         </div>
         <div className="space-y-8">
           <h3 className="text-xs uppercase tracking-[0.4em] font-black">Correspondence</h3>
           <ul className="text-[10px] space-y-5 uppercase tracking-[0.2em] text-gray-600 font-black">
-            <li className="hover:text-white cursor-pointer transition-colors">Patron Care</li>
-            <li className="hover:text-white cursor-pointer transition-colors">Press Archive</li>
-            <li className="hover:text-white cursor-pointer transition-colors">Digital Liaison</li>
+            <li className="hover:text-white cursor-pointer transition-colors">Customer Service</li>
+            <li className="hover:text-white cursor-pointer transition-colors">Press</li>
+            <li className="hover:text-white cursor-pointer transition-colors">Contact Us</li>
           </ul>
         </div>
         <div className="space-y-8">
@@ -346,19 +420,19 @@ const Footer: React.FC = () => (
           </ul>
         </div>
         <div className="space-y-8">
-          <h3 className="text-xs uppercase tracking-[0.4em] font-black">Sync List</h3>
+          <h3 className="text-xs uppercase tracking-[0.4em] font-black">Newsletter</h3>
           <div className="flex border-b border-white/20 focus-within:border-white transition-colors">
-            <input type="email" placeholder="IDENTITY@ARCHIVE.COM" className="bg-transparent border-none outline-none flex-1 text-[10px] py-4 text-white placeholder:text-gray-800 tracking-widest font-black" />
-            <button className="text-[10px] font-black uppercase tracking-[0.3em] px-4 active:scale-95">SYNC</button>
+            <input type="email" placeholder="your@email.com" className="bg-transparent border-none outline-none flex-1 text-[10px] py-4 text-white placeholder:text-gray-600 tracking-widest font-black" />
+            <button className="text-[10px] font-black uppercase tracking-[0.3em] px-4 active:scale-95">Join</button>
           </div>
-          <p className="text-[8px] uppercase tracking-widest text-gray-700">Receive archival updates and exclusive synergy concessions.</p>
+          <p className="text-[8px] uppercase tracking-widest text-gray-700">New arrivals, exclusive offers, and stories from our makers.</p>
         </div>
       </div>
       <div className="pt-16 flex flex-col md:flex-row justify-between items-center space-y-8 md:space-y-0">
         <p className="text-[9px] uppercase tracking-[0.5em] text-gray-700 font-black">MODERNIST permanent archive © 2024. All intents reserved.</p>
         <div className="flex space-x-12 text-[9px] uppercase tracking-[0.5em] text-gray-700 font-black">
           <span className="hover:text-white cursor-pointer transition-colors">Instagram</span>
-          <span className="hover:text-white cursor-pointer transition-colors">Vimeo Archive</span>
+          <span className="hover:text-white cursor-pointer transition-colors">Videos</span>
         </div>
       </div>
     </div>
@@ -388,6 +462,7 @@ const AppContent: React.FC = () => {
           <Route path="/admin/*" element={<Admin />} />
           <Route path="/search" element={<Search />} />
           <Route path="/wishlist" element={<Wishlist />} />
+          <Route path="/password-reset" element={<PasswordReset />} />
         </Routes>
       </main>
       {!isAdminPath && <Footer />}

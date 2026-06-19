@@ -66,6 +66,8 @@ interface ChatMessage {
   tryOnResult?: string;
   isTryOn?: boolean;
   coupon?: { code: string; percent: number; reason: string };
+  error?: boolean;
+  searchMetadata?: { method: string; searchTime: number; resultsCount: number };
 }
 
 class BM25Ranker {
@@ -711,9 +713,11 @@ const AIChatAgent: React.FC = () => {
 
   const buildCartContext = (): string => {
     if (cart.length === 0) return 'Cart is empty.';
-    return cart.map(item =>
-      `- ${item.product.name} (ID:${item.product.id}) x${item.quantity} @ $${item.product.price} each`
-    ).join('\n') + `\nSubtotal: $${cartSubtotal} | Discount: ${negotiatedDiscount}% | Total: $${cartTotal}`;
+    return cart.map(item => {
+      const variant = [item.selectedSize, item.selectedColor].filter(Boolean).join('/');
+      const variantStr = variant ? ` [${variant}]` : '';
+      return `- ${item.product.name}${variantStr} (ID:${item.product.id}) x${item.quantity} @ $${item.product.price} each`;
+    }).join('\n') + `\nSubtotal: $${cartSubtotal} | Discount: ${negotiatedDiscount}% | Total: $${cartTotal}`;
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -1803,7 +1807,7 @@ const AIChatAgent: React.FC = () => {
         user_id: user?.id, user_email: user?.email,
         user_message: userMessage, clerk_response: `[local:${localResult.intent}]`,
         clerk_sentiment: 'neutral', discount_offered: 0, negotiation_successful: false,
-        cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price })),
+        cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price, size: i.selectedSize, color: i.selectedColor })),
         metadata: { mode: 'local', intent: localResult.intent }
       });
       setLoading(false);
@@ -1840,7 +1844,7 @@ const AIChatAgent: React.FC = () => {
 
 CURRENT STATE:
 - INVENTORY: ${allProducts.length} pieces across Outerwear, Basics, Accessories, Home, Apparel, Footwear
-- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => `${i.product.name} ($${i.product.price} × ${i.quantity})`).join(', ')}
+- CART: ${cart.length === 0 ? 'Empty' : cart.map(i => { const v = [i.selectedSize, i.selectedColor].filter(Boolean).join('/'); return `${i.product.name}${v ? ` [${v}]` : ''} ($${i.product.price} × ${i.quantity})`; }).join(', ')}
 - CART TOTAL: $${cartTotal} | DISCOUNT: ${negotiatedDiscount}%${negotiatedDiscount < 0 ? ' (SURCHARGE ACTIVE)' : ''}
 - RUDENESS LEVEL: ${newRudenessScore}/5 ${newRudenessScore >= 3 ? '→ REFUSE discounts, apply LUXURY TAX surcharge via generate_coupon with negative %' : ''}
 - NEGOTIATION ATTEMPTS: ${currentNegotiationAttempts}/2 ${currentNegotiationAttempts === 0 ? '🚫 ZERO ATTEMPTS - This is their FIRST discount request. DO NOT call ANY tools except conversational response. Ask probing questions ONLY.' : currentNegotiationAttempts === 1 ? '🚫 ONE ATTEMPT - This is their SECOND discount request. DO NOT call ANY tools except conversational response. Probe deeper, test commitment.' : '✅ TWO+ ATTEMPTS - You may NOW call generate_coupon if they truly deserve it.'}
@@ -1901,40 +1905,6 @@ CURRENT STATE:
             }]);
           }
           didShowSomething = true;
-        } else if (fnName === 'search_and_show_products') {
-          // REJECT empty queries - this is conversation, not a product dump
-          const query = (args.query || '').trim();
-          if (!query || query.length < 2) {
-            // Don't show products - give a conversational response instead
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: "I curate experiences, not dump catalogs. Give me a style, an occasion, or a budget—and I'll build your look."
-            }]);
-            didShowSomething = true;
-            continue;
-          }
-
-          // Use embedding results if available, else fall back to keyword search
-          let results = embeddingResults.length > 0 ? embeddingResults : semanticSearch(query, args.category);
-          if (results.length > 0) {
-            updateProductFilter({ query: query, category: args.category, productIds: results.map(p => p.id) });
-            // Premium salesperson responses - sell the lifestyle
-            const searchResponses = [
-              `Curated ${results.length} pieces. Grid updated — browse below.`,
-              `${results.length} pieces arranged. Check the grid.`,
-              `Found ${results.length} pieces that command attention. See the grid:`,
-            ];
-            const response = searchResponses[Math.floor(Math.random() * searchResponses.length)];
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: response,
-              products: results // Show all results
-            }]);
-          } else {
-            setMessages(prev => [...prev, { role: 'assistant', text: "Nothing matches that criteria exactly. Refine your vision—give me a style, an occasion, or a budget." }]);
-          }
-          didShowSomething = true;
-
         } else if (fnName === 'add_to_cart') {
           let product = allProducts.find(p => p.id === args.product_id);
           if (!product) {
@@ -2437,40 +2407,44 @@ CURRENT STATE:
         </button>
       )}
 
-      <div className={`fixed inset-y-0 right-0 z-[130] w-full sm:w-[520px] transition-all duration-700 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        <div className="absolute inset-0 glass-panel border-l border-black/5 dark:border-white/10" />
-        <div className="relative h-full flex flex-col">
+      <div className={`fixed inset-y-0 right-0 z-[130] w-full sm:w-[520px] bg-white dark:bg-[#0c0c0c] border-l border-black/10 dark:border-white/10 shadow-2xl transition-all duration-700 transform flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
 
           {/* Header */}
-          <div className="p-6 md:p-10 border-b border-black/5 dark:border-white/5 flex justify-between items-end">
+          <div className="px-6 md:px-10 py-5 border-b border-black/8 dark:border-white/8 flex justify-between items-center shrink-0">
             <div>
-              <span className="text-[10px] uppercase tracking-[0.5em] text-gray-400 dark:text-gray-500 font-black">
-                Archive Concierge {embeddingModelStatus === 'ready' && '• RAG ACTIVE'}
-              </span>
-              <h2 className="font-serif text-3xl md:text-5xl font-bold uppercase tracking-tighter">The Clerk</h2>
-              <span className="text-[8px] uppercase tracking-[0.3em] text-gray-300 dark:text-gray-600 font-bold mt-1 block">
-                Hybrid Search • BM25 + Vector • RRF Fusion
-              </span>
+              <div className="flex items-center gap-2 mb-0.5">
+                {embeddingModelStatus === 'ready' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                )}
+                <span className="text-[9px] uppercase tracking-[0.5em] text-gray-400 font-black">
+                  Archive Concierge{embeddingModelStatus === 'ready' ? ' · RAG Active' : ''}
+                </span>
+              </div>
+              <h2 className="font-serif text-2xl md:text-3xl font-bold uppercase tracking-tighter leading-none text-black dark:text-white">The Clerk</h2>
             </div>
-            <button onClick={() => setIsOpen(false)} className="p-3 -mr-3 active:scale-90"><X size={32} strokeWidth={1} /></button>
+            <button onClick={() => setIsOpen(false)} className="p-2 -mr-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white transition-colors active:scale-90">
+              <X size={22} strokeWidth={1.5} />
+            </button>
           </div>
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar p-6 md:p-10 space-y-6 pb-24">
             {messages.length === 0 && (
-              <div className="h-full flex flex-col justify-center max-w-[360px] py-16">
-                <h3 className="font-serif text-3xl md:text-4xl mb-6 italic leading-tight">"So, what brings you in today?"</h3>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 leading-relaxed font-bold mb-8">
-                  I'm The Clerk — powered by production-grade RAG with hybrid search (BM25 keyword matching + vector embeddings + reciprocal rank fusion). Search, shop, negotiate, checkout — all through conversation.
+              <div className="h-full flex flex-col justify-center max-w-[340px] py-12">
+                <h3 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight text-black dark:text-white">
+                  "So, what brings you in today?"
+                </h3>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed mb-8">
+                  I can search the collection, add pieces to your bag, and negotiate a price — all through conversation.
                 </p>
                 <div className="space-y-3">
-                  <p className="text-[9px] uppercase tracking-[0.4em] text-gray-300 dark:text-gray-600 font-black">Try These</p>
+                  <p className="text-[9px] uppercase tracking-[0.4em] text-gray-400 dark:text-gray-500 font-black">Try asking</p>
                   <div className="flex flex-wrap gap-2">
                     {quickActions.map(qa => (
                       <button
                         key={qa.label}
                         onClick={() => setInput(qa.action)}
-                        className="px-3 py-2 border border-black/10 dark:border-white/10 text-[9px] uppercase tracking-widest font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-95"
+                        className="px-3 py-2 border border-black/15 dark:border-white/15 text-[9px] uppercase tracking-widest font-black text-black dark:text-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-95"
                       >
                         {qa.label}
                       </button>
@@ -2482,49 +2456,37 @@ CURRENT STATE:
 
             {messages.map((m, i) => (
               <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2 duration-500`}>
-                <div className={`max-w-[95%] p-4 ${m.role === 'user' ? 'text-right font-light italic text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900' : 'text-left text-black dark:text-white bg-black/5 dark:bg-white/5'} ${m.error ? 'border-l-2 border-red-500 dark:border-red-400' : ''}`}>
-                  {m.error && <AlertCircle size={12} className="text-red-500 dark:text-red-400 mb-2 inline-block mr-1" />}
-                  <span className="whitespace-pre-line text-sm leading-relaxed">{m.text}</span>
 
-                  {/* Search Metadata */}
-                  {m.searchMetadata && (
-                    <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10">
-                      <p className="text-[8px] uppercase tracking-[0.3em] text-gray-400 dark:text-gray-500">
-                        {m.searchMetadata.method.toUpperCase()} • {m.searchMetadata.searchTime}ms • {m.searchMetadata.resultsCount} results
+                {m.role === 'user' ? (
+                  <div className="max-w-[80%] bg-black dark:bg-white text-white dark:text-black px-5 py-3 text-sm font-light">
+                    <span className="whitespace-pre-line leading-relaxed">{m.text}</span>
+                  </div>
+                ) : (
+                  <div className={`max-w-[95%] ${m.error ? 'border-l-2 border-red-400 pl-4 py-1' : ''}`}>
+                    {m.error && (
+                      <div className="flex items-start gap-2 mb-1">
+                        <AlertCircle size={13} className="text-red-400 mt-0.5 shrink-0" />
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">Connection error</span>
+                      </div>
+                    )}
+                    <span className="whitespace-pre-line text-sm leading-relaxed text-black dark:text-white">{m.text}</span>
+
+                    {m.searchMetadata && (
+                      <p className="mt-2 text-[8px] uppercase tracking-[0.3em] text-gray-300 dark:text-gray-600">
+                        {m.searchMetadata.method} · {m.searchMetadata.searchTime}ms · {m.searchMetadata.resultsCount} results
                       </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
-                {/* PRODUCT CARDS - CRITICAL FEATURE */}
                 {m.products && m.products.length > 0 && (
-                  <div className="flex gap-3 overflow-x-auto mt-3 pb-2 w-full no-scrollbar">
+                  <div className="flex gap-3 overflow-x-auto mt-4 pb-2 w-full no-scrollbar">
                     {m.products.map(p => <ProductCardInChat key={p.id} product={p} />)}
                   </div>
                 )}
 
                 {m.coupon && <CouponCard coupon={m.coupon} />}
-                {m.products && m.products.length > 0 && (
-                  <div className="mt-4 w-full max-w-md space-y-2">
-                    {m.products.map((product) => (
-                      <div key={product.id} className="flex gap-3 p-3 border border-black/10 dark:border-white/10 bg-white dark:bg-black hover:bg-gray-50 dark:hover:bg-gray-900 transition-all">
-                        <img src={product.image_url} alt={product.name} className="w-16 h-16 object-cover" />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-bold uppercase truncate">{product.name}</h4>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400">${product.price}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => { addToCartWithQuantity(product.id, 1); addToast(`${product.name} added`, 'success'); }}
-                            className="px-3 py-1.5 text-[9px] uppercase tracking-wider font-black bg-black dark:bg-white text-white dark:text-black hover:opacity-80 transition-opacity active:scale-95"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+
                 {m.isTryOn && m.tryOnResult && (
                   <div className="mt-3 w-48 aspect-[3/4] overflow-hidden border border-black/10 dark:border-white/10">
                     <img src={m.tryOnResult} alt="Virtual try-on" className="w-full h-full object-cover" />
@@ -2554,7 +2516,7 @@ CURRENT STATE:
           </div>
 
           {/* Input Bar */}
-          <div className="p-6 md:p-10 border-t border-black/5 dark:border-white/5 bg-white/40 dark:bg-black/40 backdrop-blur-xl">
+          <div className="p-6 md:p-10 border-t border-black/10 dark:border-white/10 bg-white dark:bg-[#0c0c0c]">
             <div className="relative flex items-center gap-4">
               <div className="relative flex-1">
                 <input
@@ -2563,7 +2525,7 @@ CURRENT STATE:
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !loading && handleSendMessage()}
                   placeholder="Try: Show me summer dresses..."
-                  className="w-full bg-transparent border-b border-black/20 dark:border-white/20 focus:border-black dark:focus:border-white outline-none py-5 text-sm uppercase tracking-[0.3em] font-bold transition-colors placeholder:text-gray-300 dark:placeholder:text-gray-600"
+                  className="w-full bg-transparent border-b border-black/20 dark:border-white/20 focus:border-black dark:focus:border-white outline-none py-5 text-sm uppercase tracking-[0.3em] font-bold text-black dark:text-white transition-colors placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   disabled={loading}
                 />
                 <button
@@ -2571,12 +2533,11 @@ CURRENT STATE:
                   className="absolute right-0 p-4 active:scale-90 transition-transform"
                   disabled={loading || !input.trim()}
                 >
-                  <ChevronRight size={28} className={loading || !input.trim() ? 'text-gray-200 dark:text-gray-700' : 'text-black dark:text-white'} />
+                  <ChevronRight size={28} className={loading || !input.trim() ? 'text-gray-300 dark:text-gray-600' : 'text-black dark:text-white'} />
                 </button>
               </div>
             </div>
           </div>
-        </div>
       </div>
     </>
   );

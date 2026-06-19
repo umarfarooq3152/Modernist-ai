@@ -20,6 +20,7 @@ interface StoreContextValue extends StoreState {
   quickViewProduct: Product | null;
   isSyncingERP: boolean;
   addToCart: (product: Product) => void;
+  addToCartWithVariant: (product: Product, selectedSize?: string, selectedColor?: string) => void;
   addToCartWithQuantity: (productId: string, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -71,14 +72,13 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
     case 'SET_PRODUCTS':
       return { ...state, products: action.payload, allProducts: action.payload };
     case 'ADD_TO_CART': {
-      const existingItem = state.cart.find(item => item.product.id === action.payload.id);
+      const cartKey = action.payload.id;
+      const existingItem = state.cart.find(item => item.cartKey === cartKey);
       if (existingItem) {
         return {
           ...state,
           cart: state.cart.map(item =>
-            item.product.id === action.payload.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
+            item.cartKey === cartKey ? { ...item, quantity: item.quantity + 1 } : item
           ),
           lastAddedProduct: action.payload,
           isCartOpen: true,
@@ -86,21 +86,20 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       }
       return {
         ...state,
-        cart: [...state.cart, { product: action.payload, quantity: 1 }],
+        cart: [...state.cart, { product: action.payload, quantity: 1, cartKey }],
         lastAddedProduct: action.payload,
         isCartOpen: true,
       };
     }
-    case 'ADD_TO_CART_QUANTITY': {
-      const { product, quantity } = action.payload;
-      const existingItem = state.cart.find(item => item.product.id === product.id);
+    case 'ADD_TO_CART_VARIANT': {
+      const { product, selectedSize, selectedColor } = action.payload;
+      const cartKey = `${product.id}__${selectedSize || ''}__${selectedColor || ''}`;
+      const existingItem = state.cart.find(item => item.cartKey === cartKey);
       if (existingItem) {
         return {
           ...state,
           cart: state.cart.map(item =>
-            item.product.id === product.id
-              ? { ...item, quantity: item.quantity + quantity }
-              : item
+            item.cartKey === cartKey ? { ...item, quantity: item.quantity + 1 } : item
           ),
           lastAddedProduct: product,
           isCartOpen: true,
@@ -108,7 +107,28 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       }
       return {
         ...state,
-        cart: [...state.cart, { product, quantity }],
+        cart: [...state.cart, { product, quantity: 1, cartKey, selectedSize, selectedColor }],
+        lastAddedProduct: product,
+        isCartOpen: true,
+      };
+    }
+    case 'ADD_TO_CART_QUANTITY': {
+      const { product, quantity } = action.payload;
+      const cartKey = product.id;
+      const existingItem = state.cart.find(item => item.cartKey === cartKey);
+      if (existingItem) {
+        return {
+          ...state,
+          cart: state.cart.map(item =>
+            item.cartKey === cartKey ? { ...item, quantity: item.quantity + quantity } : item
+          ),
+          lastAddedProduct: product,
+          isCartOpen: true,
+        };
+      }
+      return {
+        ...state,
+        cart: [...state.cart, { product, quantity, cartKey }],
         lastAddedProduct: product,
         isCartOpen: true,
       };
@@ -116,13 +136,13 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
     case 'REMOVE_FROM_CART':
       return {
         ...state,
-        cart: state.cart.filter(item => item.product.id !== action.payload),
+        cart: state.cart.filter(item => item.cartKey !== action.payload),
       };
     case 'UPDATE_QUANTITY':
       return {
         ...state,
         cart: state.cart.map(item =>
-          item.product.id === action.payload.id
+          item.cartKey === action.payload.id
             ? { ...item, quantity: Math.max(0, action.payload.quantity) }
             : item
         ).filter(item => item.quantity > 0),
@@ -229,52 +249,71 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isSyncingERP, setIsSyncingERP] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const attemptFetch = async (attempt: number): Promise<boolean> => {
+      const TIMEOUT_MS = attempt === 1 ? 8000 : 20000;
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), TIMEOUT_MS)
+      );
+
+      const [productsResult, reviewsResult] = await Promise.race([
+        Promise.all([
+          // TODO(Step-2): hide bottom_price behind RLS once AI negotiation moves server-side
+          supabase.from('products').select('*'),
+          supabase.from('reviews').select('*')
+        ]),
+        timeoutPromise
+      ]) as any;
+
+      const { data: productsData, error: productsError } = productsResult;
+      const { data: reviewsData, error: reviewsError } = reviewsResult;
+
+      if (productsData && !productsError && productsData.length > 0) {
+        const reviewsByProduct = new Map<string, Review[]>();
+        if (reviewsData && !reviewsError) {
+          reviewsData.forEach((review: Review) => {
+            if (!reviewsByProduct.has(review.product_id)) {
+              reviewsByProduct.set(review.product_id, []);
+            }
+            reviewsByProduct.get(review.product_id)!.push(review);
+          });
+        }
+
+        const productsWithReviews = productsData.map((product: Product) => ({
+          ...product,
+          reviews: reviewsByProduct.get(product.id) || []
+        }));
+
+        if (!cancelled) dispatch({ type: 'SET_PRODUCTS', payload: productsWithReviews });
+        return true;
+      }
+      return false;
+    };
+
     const fetchProducts = async () => {
       setIsInitialLoading(true);
       try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), 5000)
-        );
-
-        const [productsResult, reviewsResult] = await Promise.race([
-          Promise.all([
-            // TODO(Step-2): hide bottom_price behind RLS once AI negotiation moves server-side
-            supabase.from('products').select('*'),
-            supabase.from('reviews').select('*')
-          ]),
-          timeoutPromise
-        ]) as any;
-
-        const { data: productsData, error: productsError } = productsResult;
-        const { data: reviewsData, error: reviewsError } = reviewsResult;
-
-        if (productsData && !productsError && productsData.length > 0) {
-          // Create a map of reviews by product_id
-          const reviewsByProduct = new Map<string, Review[]>();
-          if (reviewsData && !reviewsError) {
-            reviewsData.forEach((review: Review) => {
-              if (!reviewsByProduct.has(review.product_id)) {
-                reviewsByProduct.set(review.product_id, []);
-              }
-              reviewsByProduct.get(review.product_id)!.push(review);
-            });
-          }
-
-          // Attach reviews to products
-          const productsWithReviews = productsData.map((product: Product) => ({
-            ...product,
-            reviews: reviewsByProduct.get(product.id) || []
-          }));
-
-          dispatch({ type: 'SET_PRODUCTS', payload: productsWithReviews });
+        const ok = await attemptFetch(1);
+        if (!ok && !cancelled) {
+          // Supabase project may be cold-starting — retry once with a longer timeout
+          await attemptFetch(2);
         }
       } catch (e) {
-        console.error("Supabase load failed (or timed out), falling back to local data", e);
+        if (!cancelled) {
+          try {
+            await attemptFetch(2);
+          } catch (e2) {
+            console.error('Supabase load failed after retry:', e2);
+          }
+        }
       } finally {
-        setIsInitialLoading(false);
+        if (!cancelled) setIsInitialLoading(false);
       }
     };
+
     fetchProducts();
+    return () => { cancelled = true; };
   }, []);
 
   const cartSubtotal = useMemo(() => state.cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0), [state.cart]);
@@ -288,6 +327,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [cartSubtotal, synergyDiscount, state.negotiatedDiscount]);
 
   const addToCart = useCallback((product: Product) => dispatch({ type: 'ADD_TO_CART', payload: product }), []);
+  const addToCartWithVariant = useCallback((product: Product, selectedSize?: string, selectedColor?: string) =>
+    dispatch({ type: 'ADD_TO_CART_VARIANT', payload: { product, selectedSize, selectedColor } }), []);
   const addToCartWithQuantity = useCallback((productId: string, quantity: number) => {
     const product = state.allProducts.find(p => p.id === productId);
     if (product) dispatch({ type: 'ADD_TO_CART_QUANTITY', payload: { product, quantity } });
@@ -541,7 +582,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const value = {
     ...state, cartSubtotal, cartTotal, synergyDiscount, activeVibe, isCurating, isInitialLoading, toasts, quickViewProduct, isSyncingERP,
-    addToCart, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
+    addToCart, addToCartWithVariant, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
     searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, toggleTheme,

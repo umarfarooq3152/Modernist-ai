@@ -1,6 +1,9 @@
 
 import { supabase } from './supabase';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 // ─────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────
@@ -12,6 +15,8 @@ export interface AdminStats {
   totalNegotiations: number;
   totalRevenue: number;
   acceptedNegotiations: number;
+  visitorsToday: number;
+  productViewsToday: number;
   revenueChart: { name: string; revenue: number }[];
   categoryChart: { name: string; value: number }[];
   recentOrders: {
@@ -33,6 +38,30 @@ export interface AdminProduct {
   image_url: string;
   tags: string[];
   created_at: string;
+  variants?: { sizes?: string[]; colors?: string[] };
+  stock_quantity?: number;
+  low_stock_threshold?: number;
+}
+
+export interface AdminCoupon {
+  id: number;
+  code: string;
+  discount_percent: number;
+  max_uses: number | null;
+  uses_count: number;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AdminCustomer {
+  id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string;
+  order_count: number;
+  total_spend: number;
 }
 
 export interface AdminReview {
@@ -86,16 +115,22 @@ async function adminFetch<T>(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
-  const { data, error } = await supabase.functions.invoke(`admin-api/${path}`, {
-    ...options,
+  const method = (options.method || 'GET').toUpperCase();
+  const url = `${SUPABASE_URL}/functions/v1/admin-api/${path}`;
+
+  const response = await fetch(url, {
+    method,
     headers: {
-      Authorization: `Bearer ${session.access_token}`,
+      'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      'apikey': SUPABASE_ANON_KEY,
+      ...(options.headers as Record<string, string> || {}),
     },
+    body: options.body,
   });
 
-  if (error) throw new Error(error.message || 'Admin API error');
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
   if (data?.error) throw new Error(data.error);
   return data as T;
 }
@@ -213,5 +248,48 @@ export const adminApi = {
       const qs = q.toString();
       return adminFetch<PaginatedResponse<AdminNegotiation>>(`negotiations${qs ? `?${qs}` : ''}`);
     },
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Coupons / Concessions
+  // ─────────────────────────────────────────────────────
+  coupons: {
+    list: () => adminFetch<{ data: AdminCoupon[] }>('coupons'),
+
+    create: (coupon: { code: string; discount_percent: number; max_uses?: number; expires_at?: string }) =>
+      adminFetch<{ data: AdminCoupon }>('coupons', {
+        method: 'POST',
+        body: JSON.stringify(coupon),
+      }),
+
+    update: (id: number, updates: Partial<Pick<AdminCoupon, 'is_active' | 'discount_percent' | 'max_uses' | 'expires_at' | 'code'>>) =>
+      adminFetch<{ data: AdminCoupon }>(`coupons/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      }),
+
+    delete: (id: number) =>
+      adminFetch<{ success: boolean }>(`coupons/${id}`, { method: 'DELETE' }),
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Customers / Patrons
+  // ─────────────────────────────────────────────────────
+  customers: {
+    list: (params: { page?: number; pageSize?: number; search?: string } = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set('page', String(params.page));
+      if (params.pageSize) q.set('pageSize', String(params.pageSize));
+      if (params.search) q.set('search', params.search);
+      const qs = q.toString();
+      return adminFetch<PaginatedResponse<AdminCustomer>>(`customers${qs ? `?${qs}` : ''}`);
+    },
+  },
+
+  // ─────────────────────────────────────────────────────
+  // Embeddings
+  // ─────────────────────────────────────────────────────
+  embeddings: {
+    backfill: () => adminFetch<{ queued: number; message: string }>('backfill-embeddings', { method: 'POST' }),
   },
 };

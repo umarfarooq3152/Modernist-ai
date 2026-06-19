@@ -168,56 +168,82 @@ export default function HeroSection({ children }: HeroSectionProps) {
       <div className="content-section">
         {/* Scrollable triggers and Text */}
         <section ref={triggerRef} className="hero relative">
-          <div className="hero-content" style={{ gap: '1.25rem' }}>
-            {/* central minimal branding text */}
-            <motion.h1
-              className="font-serif-elegant text-white text-2xl md:text-3xl font-extrabold tracking-wider uppercase opacity-90 px-6 py-3 border border-white/40"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 1.4, delay: 0.5 }}
+          <div className="hero-content">
+
+            {/* Top eyebrow */}
+            <motion.p
+              className="hero-eyebrow"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.2, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
-              MODERNIST COLLECTION
+              Fine Jewellery — Permanent Archive
+            </motion.p>
+
+            {/* Massive editorial display title */}
+            <motion.h1
+              className="hero-display"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.6, delay: 0.55, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Modernist
             </motion.h1>
+
+            {/* Divider */}
+            <motion.div
+              className="hero-divider"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 1.2, delay: 0.9, ease: [0.16, 1, 0.3, 1] }}
+            />
+
+            {/* Italic subtext in Cormorant */}
+            <motion.p
+              className="hero-tagline"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.2, delay: 1.1, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Diamonds, precious metals & certified stones
+            </motion.p>
+
+            {/* Bottom wordmark */}
+            <motion.p
+              className="hero-wordmark"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 1.4, delay: 1.4 }}
+            >
+              Est. 2024 · Curated Lifestyle
+            </motion.p>
           </div>
 
-          {/* Morphing text now sits in corner */}
+          {/* Morphing text — bottom-right corner */}
           <motion.div
-            className="absolute right-4 bottom-4 opacity-80"
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 1.2, delay: 0.3 }}
+            className="absolute right-5 bottom-16 md:right-8 md:bottom-20"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            transition={{ duration: 1.4, delay: 1.6 }}
           >
             <MorphingText
-              texts={[
-                'Premium',
-                'Lifestyle',
-                'Archive',
-                'Curated',
-                'Modernist',
-                'Everlasting',
-                'Collection',
-                'Design',
-                'Timeless',
-              ]}
-              className="text-white text-[1.2rem] md:text-[1.4rem] lg:text-[1.6rem] font-black uppercase tracking-tight" style={{ fontFamily: 'var(--font-primary)' }}
+              texts={['Premium', 'Archive', 'Curated', 'Everlasting', 'Timeless', 'Refined']}
+              className="text-white text-[0.65rem] md:text-[0.75rem] font-medium uppercase tracking-[0.4em] font-sans"
             />
           </motion.div>
-
-          {/* Dynamic Spinning Text Component */}
-          {/* spinning text removed from hero overlay to show at page end for clearer minimal layout */}
 
           {/* Scroll cue */}
           <motion.div
             className="scroll-indicator"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 0.4 }}
-            transition={{ delay: 1.4, duration: 1 }}
+            animate={{ opacity: 0.5 }}
+            transition={{ delay: 1.8, duration: 1 }}
           >
             <motion.div
               animate={{ y: [0, 8, 0] }}
               transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}
             >
-              <ChevronDown size={16} strokeWidth={1} />
+              <ChevronDown size={14} strokeWidth={1} />
             </motion.div>
           </motion.div>
         </section>

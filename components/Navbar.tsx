@@ -1,154 +1,179 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Search, Menu, X, User, LogOut, Package, ChevronRight, UserCircle, Heart } from 'lucide-react';
+import { ShoppingBag, Search, Menu, X, User, LogOut, Package, ChevronRight, UserCircle, Heart, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
 
+const LEFT_CATS = ['Watches', 'Rings', 'Necklaces'];
+const RIGHT_CATS = ['Bracelets', 'Earrings', 'Diamonds'];
+
 const Navbar: React.FC = () => {
   const { cart, toggleCart, filterByCategory, currentCategory, searchProducts } = useStore();
-  const { user, setAuthModalOpen, logout } = useAuth();
+  const { user, profile, setAuthModalOpen, logout } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const categories = ['All', 'Watches', 'Rings', 'Necklaces', 'Bracelets'];
+  const allCategories = ['All', 'Watches', 'Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Diamonds'];
 
-  // International Standard: Body Scroll Lock
   useEffect(() => {
-    if (isMobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    const onScroll = () => setIsScrolled(window.scrollY > 60);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = isMobileMenuOpen ? 'hidden' : 'unset';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isMobileMenuOpen]);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      searchProducts(searchValue);
-    }, 300);
-    return () => clearTimeout(delayDebounceFn);
+    const delay = setTimeout(() => searchProducts(searchValue), 300);
+    return () => clearTimeout(delay);
   }, [searchValue]);
 
-  // Close mobile menu on route change
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [location.pathname]);
+  useEffect(() => { setIsMobileMenuOpen(false); }, [location.pathname]);
 
-  // Get display name from Supabase metadata
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.display_name || 'Patron';
+
+  const scrollToProducts = (cat: string) => {
+    try { filterByCategory(cat); } catch {}
+    const el = document.getElementById('products-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const navCatClass = (cat: string) =>
+    `text-[9px] font-semibold uppercase tracking-[0.22em] transition-all duration-300 relative group cursor-pointer
+    ${isScrolled
+      ? cat === currentCategory
+        ? 'text-black dark:text-white'
+        : 'text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white'
+      : cat === currentCategory
+        ? 'text-white'
+        : 'text-white/50 hover:text-white'
+    }`;
 
   return (
     <>
-      <header className="sticky top-0 z-[100] w-full glass border-b border-black transition-all duration-500">
-        <div className="max-w-[1400px] mx-auto px-4 md:px-8">
-          <div className="flex items-center justify-between h-16 md:h-20">
+      {/* ── Main bar ─────────────────────────────────────────── */}
+      <header
+        className={`sticky top-0 z-[100] transition-all duration-500 ${
+          isScrolled
+            ? 'bg-white/92 dark:bg-[#080808]/92 backdrop-blur-2xl border-b border-black/6 dark:border-white/6 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]'
+            : 'bg-transparent border-b border-transparent'
+        }`}
+      >
+        <div className="max-w-[1400px] mx-auto px-5 md:px-10">
+          <div className="flex items-center justify-between h-14 md:h-16 gap-6">
 
-            {/* Hamburger Trigger - Optimized touch zone */}
-            <button
-              className="md:hidden p-3 -ml-3 active:scale-90 transition-transform z-[210] relative tap-highlight-none"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              aria-label="Toggle Menu"
-            >
-              {isMobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
-            </button>
+            {/* LEFT — categories (desktop) | hamburger (mobile) */}
+            <div className="flex items-center gap-5 md:gap-7 flex-1">
+              <button
+                className="md:hidden p-1 -ml-1 active:scale-90 transition-transform tap-highlight-none"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                aria-label="Toggle Menu"
+              >
+                {isMobileMenuOpen
+                  ? <X size={20} strokeWidth={1.5} className={isScrolled ? 'text-black dark:text-white' : 'text-white'} />
+                  : <Menu size={20} strokeWidth={1.5} className={isScrolled ? 'text-black dark:text-white' : 'text-white'} />
+                }
+              </button>
 
-              <div className="flex-1 md:flex-none flex justify-center md:block">
-              <Link to="/" style={{ color: 'var(--text-primary)' }} className="font-serif-elegant text-xl md:text-2xl font-bold tracking-[0.2em] transition-opacity hover:opacity-70">
-                MODERNIST
-              </Link>
+              <nav className="hidden md:flex items-center gap-6 lg:gap-8">
+                {LEFT_CATS.map(cat => (
+                  <button key={cat} onClick={() => scrollToProducts(cat)} className={navCatClass(cat)}>
+                    {cat}
+                    <span className={`absolute -bottom-0.5 left-0 w-full h-px transition-transform duration-500 origin-left
+                      ${isScrolled ? 'bg-black dark:bg-white' : 'bg-white'}
+                      ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`}
+                    />
+                  </button>
+                ))}
+              </nav>
             </div>
 
-            <nav className="hidden md:flex items-center space-x-8">
-              {categories.map((cat) => (
-                <a
-                  key={cat}
-                  href="#products-section"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    // set filter then scroll to the products section
-                    try { filterByCategory(cat); } catch (err) { /* no-op */ }
-                    const el = document.getElementById('products-section');
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                  style={{ color: 'var(--text-primary)' }}
-                  className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative group ${currentCategory === cat ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}
-                >
-                  {cat}
-                  <span className={`absolute -bottom-1 left-0 w-full h-[1px] bg-[color:var(--text-primary)] transition-transform duration-500 origin-left ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
-                </a>
-              ))}
-            </nav>
+            {/* CENTER — wordmark, only visible when scrolled */}
+            <Link
+              to="/"
+              className={`absolute left-1/2 -translate-x-1/2 font-serif text-base md:text-lg tracking-[0.28em] font-medium transition-all duration-500 whitespace-nowrap hover:opacity-60 ${
+                isScrolled ? 'text-black dark:text-white opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              MODERNIST
+            </Link>
 
-            <div className="flex items-center space-x-2 md:space-x-6">
-              <div className={`hidden lg:flex items-center border-b transition-all duration-500 ${isSearchFocused || searchValue ? 'border-black w-64' : 'border-black/10 w-40'}`}>
-                <div className="flex items-center w-full px-1">
-                  <Search size={14} strokeWidth={1.5} className={isSearchFocused ? 'text-black' : 'text-gray-400'} />
-                  <input
-                    type="text"
-                    placeholder="Archive..."
-                    value={searchValue}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
-                    onChange={(e) => setSearchValue(e.target.value)}
-                    className="bg-transparent border-none outline-none text-[10px] uppercase tracking-widest py-2 px-3 w-full placeholder:text-gray-300"
-                  />
-                </div>
-              </div>
-
-              <AnimatedThemeToggler className="w-9 h-9 text-[color:var(--text-primary)]" />
-
-              <div className="relative">
-                {user ? (
-                  <div
-                    className="flex items-center space-x-2 cursor-pointer tap-highlight-none"
-                    onClick={() => setIsProfileOpen(!isProfileOpen)}
-                  >
-                    <div className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center border border-black hover:bg-black hover:text-white transition-all overflow-hidden bg-white/50 active:scale-95">
-                      {user.user_metadata?.avatar_url ? (
-                        <img src={user.user_metadata.avatar_url} alt={displayName} className="w-full h-full object-cover" />
-                      ) : (
-                        <User size={12} strokeWidth={1.5} />
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setAuthModalOpen(true)}
-                    className="p-2 text-[10px] uppercase tracking-widest font-bold hover:opacity-50 transition-all flex items-center space-x-2 active:scale-95 tap-highlight-none"
-                  >
-                    <User size={18} strokeWidth={1.5} />
-                    <span className="hidden sm:inline">Identity</span>
+            {/* RIGHT — categories (desktop) + icons */}
+            <div className="flex items-center gap-5 md:gap-6 flex-1 justify-end">
+              <nav className="hidden md:flex items-center gap-6 lg:gap-8">
+                {RIGHT_CATS.map(cat => (
+                  <button key={cat} onClick={() => scrollToProducts(cat)} className={navCatClass(cat)}>
+                    {cat}
+                    <span className={`absolute -bottom-0.5 left-0 w-full h-px transition-transform duration-500 origin-left
+                      ${isScrolled ? 'bg-black dark:bg-white' : 'bg-white'}
+                      ${currentCategory === cat ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`}
+                    />
                   </button>
-                )}
-              </div>
+                ))}
+              </nav>
 
-              <Link
-                to="/search"
-                className="p-2 hover:bg-black hover:text-white transition-all duration-500 rounded-full active:scale-90 tap-highlight-none"
-                title="Semantic Search"
+              {/* Search toggle */}
+              <button
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className={`p-1.5 transition-all active:scale-90 tap-highlight-none ${isScrolled ? 'text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white' : 'text-white/70 hover:text-white'}`}
+                aria-label="Search"
               >
-                <Search size={18} strokeWidth={1.5} />
-              </Link>
+                <Search size={16} strokeWidth={1.5} />
+              </button>
+
+              <AnimatedThemeToggler className={`w-8 h-8 transition-colors ${isScrolled ? 'text-black dark:text-white' : 'text-white'}`} />
+
+              {/* User */}
+              {user ? (
+                <button
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
+                  className="w-7 h-7 flex items-center justify-center border transition-all active:scale-90 tap-highlight-none overflow-hidden
+                    border-current"
+                  style={{ color: isScrolled ? undefined : 'rgba(255,255,255,0.8)' }}
+                >
+                  {user.user_metadata?.avatar_url ? (
+                    <img src={user.user_metadata.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+                  ) : (
+                    <User size={11} strokeWidth={1.5} />
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  className={`p-1.5 transition-all active:scale-90 tap-highlight-none ${isScrolled ? 'text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white' : 'text-white/70 hover:text-white'}`}
+                >
+                  <User size={16} strokeWidth={1.5} />
+                </button>
+              )}
 
               <Link
                 to="/wishlist"
-                className="p-2 hover:bg-black hover:text-white transition-all duration-500 rounded-full active:scale-90 tap-highlight-none"
-                title="Wishlist"
+                className={`p-1.5 transition-all active:scale-90 tap-highlight-none ${isScrolled ? 'text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white' : 'text-white/70 hover:text-white'}`}
               >
-                <Heart size={18} strokeWidth={1.5} />
+                <Heart size={16} strokeWidth={1.5} />
               </Link>
 
-              <button onClick={toggleCart} className="relative p-2 hover:bg-black hover:text-white transition-all duration-500 rounded-full active:scale-90 tap-highlight-none">
-                <ShoppingBag size={18} strokeWidth={1.5} />
+              <button
+                onClick={toggleCart}
+                className={`relative p-1.5 transition-all active:scale-90 tap-highlight-none ${isScrolled ? 'text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white' : 'text-white/70 hover:text-white'}`}
+              >
+                <ShoppingBag size={16} strokeWidth={1.5} />
                 {cartCount > 0 && (
-                  <span className="absolute top-1 right-1 bg-black text-white text-[8px] w-3.5 h-3.5 flex items-center justify-center rounded-full font-bold border border-white">
+                  <span className={`absolute -top-0.5 -right-0.5 text-[7px] w-3.5 h-3.5 flex items-center justify-center font-bold
+                    ${isScrolled ? 'bg-black dark:bg-white text-white dark:text-black' : 'bg-white text-black'}`}>
                     {cartCount}
                   </span>
                 )}
@@ -157,9 +182,36 @@ const Navbar: React.FC = () => {
           </div>
         </div>
 
+        {/* Search bar dropdown */}
+        <AnimatePresence>
+          {isSearchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden border-t border-black/6 dark:border-white/6"
+            >
+              <div className="max-w-[1400px] mx-auto px-5 md:px-10 py-4 flex items-center gap-4">
+                <Search size={14} strokeWidth={1.5} className="text-gray-400 shrink-0" />
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Search the archive..."
+                  value={searchValue}
+                  onChange={e => setSearchValue(e.target.value)}
+                  className="flex-1 bg-transparent border-none outline-none text-[11px] uppercase tracking-[0.3em] text-black dark:text-white placeholder:text-gray-300 dark:placeholder:text-gray-700"
+                />
+                <button onClick={() => setIsSearchOpen(false)} className="text-gray-400 hover:text-black dark:hover:text-white transition-colors">
+                  <X size={14} strokeWidth={1.5} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
-      {/* Profile Dropdown - Portalled outside header to escape sticky/glass stacking context */}
+      {/* ── Profile dropdown ─────────────────────────────── */}
       <AnimatePresence>
         {user && isProfileOpen && (
           <>
@@ -167,74 +219,72 @@ const Navbar: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[140] bg-black/5 backdrop-blur-[1px]"
+              className="fixed inset-0 z-[140]"
               onClick={() => setIsProfileOpen(false)}
             />
             <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              initial={{ opacity: 0, y: 8, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="fixed top-[4.5rem] md:top-[6rem] right-4 md:right-8 w-72 bg-white/95 dark:bg-[#050505]/95 backdrop-blur-3xl border border-black/5 dark:border-white/10 shadow-[0_20px_40px_-5px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_-5px_rgba(0,0,0,1)] p-6 z-[150]"
+              exit={{ opacity: 0, y: 8, scale: 0.97 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="fixed top-[3.8rem] md:top-[4.5rem] right-4 md:right-10 w-72 bg-white dark:bg-[#0a0a0a] border border-black/8 dark:border-white/8 shadow-[0_24px_48px_-8px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_48px_-8px_rgba(0,0,0,0.9)] p-6 z-[150]"
             >
-              <div className="mb-6 flex items-start justify-between border-b border-black/10 dark:border-white/10 pb-4">
+              <div className="mb-5 pb-5 border-b border-black/6 dark:border-white/6 flex items-start justify-between">
                 <div>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-[0.2em] mb-2">Signed in as</p>
-                  <p className="text-sm font-serif-elegant font-bold text-black dark:text-white tracking-wide truncate max-w-[180px]">{displayName}</p>
-                  <p className="text-[9px] text-gray-600 dark:text-gray-300 tracking-widest mt-1 truncate max-w-[180px]">{user.email}</p>
+                  <p className="text-[9px] text-gray-400 font-medium uppercase tracking-[0.3em] mb-1.5">Signed in as</p>
+                  <p className="text-sm font-medium text-black dark:text-white truncate max-w-[180px]">{displayName}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[180px]">{user.email}</p>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shadow-md">
-                  <span className="font-serif-elegant text-xs font-bold">{displayName.charAt(0)}</span>
+                <div className="w-9 h-9 bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0">
+                  <span className="font-serif text-sm font-medium">{displayName.charAt(0).toUpperCase()}</span>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <Link
-                  to="/profile"
-                  onClick={() => setIsProfileOpen(false)}
-                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-sm text-black dark:text-gray-200"
-                >
-                  <span className="flex items-center gap-3">
-                    <UserCircle size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
-                    <span>Patron Profile</span>
-                  </span>
-                  <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
-                </Link>
+              <div className="space-y-0.5">
+                {[
+                  { to: '/profile', icon: UserCircle, label: 'My Profile' },
+                  { to: '/orders', icon: Package, label: 'My Orders' },
+                  { to: '/wishlist', icon: Heart, label: 'Wishlist' },
+                ].map(({ to, icon: Icon, label }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    onClick={() => setIsProfileOpen(false)}
+                    className="group flex items-center justify-between text-[10px] uppercase tracking-[0.22em] font-medium py-3 px-2 hover:bg-black/3 dark:hover:bg-white/3 transition-all text-black dark:text-white"
+                  >
+                    <span className="flex items-center gap-3">
+                      <Icon size={13} strokeWidth={1.5} className="opacity-40 group-hover:opacity-70 transition-opacity" />
+                      {label}
+                    </span>
+                    <ChevronRight size={11} className="opacity-0 -translate-x-1 group-hover:opacity-50 group-hover:translate-x-0 transition-all" />
+                  </Link>
+                ))}
 
-                <Link
-                  to="/orders"
-                  onClick={() => setIsProfileOpen(false)}
-                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-sm text-black dark:text-gray-200"
-                >
-                  <span className="flex items-center gap-3">
-                    <Package size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
-                    <span>Acquisitions</span>
-                  </span>
-                  <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
-                </Link>
+                {isAdmin && (
+                  <>
+                    <div className="h-px bg-black/5 dark:bg-white/5 my-1" />
+                    <Link
+                      to="/admin"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="group flex items-center justify-between text-[10px] uppercase tracking-[0.22em] font-medium py-3 px-2 hover:bg-black/3 dark:hover:bg-white/3 transition-all text-black dark:text-white"
+                    >
+                      <span className="flex items-center gap-3">
+                        <LayoutDashboard size={13} strokeWidth={1.5} className="opacity-40 group-hover:opacity-70 transition-opacity" />
+                        Admin Panel
+                      </span>
+                      <ChevronRight size={11} className="opacity-0 -translate-x-1 group-hover:opacity-50 group-hover:translate-x-0 transition-all" />
+                    </Link>
+                  </>
+                )}
 
-                <Link
-                  to="/wishlist"
-                  onClick={() => setIsProfileOpen(false)}
-                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all rounded-sm text-black dark:text-gray-200"
-                >
-                  <span className="flex items-center gap-3">
-                    <Heart size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
-                    <span>Saved Pieces</span>
-                  </span>
-                  <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
-                </Link>
-
-                <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
+                <div className="h-px bg-black/5 dark:bg-white/5 my-1" />
 
                 <button
                   onClick={() => { logout(); setIsProfileOpen(false); }}
-                  className="group w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-bold py-3 px-2 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-sm text-red-600 dark:text-red-400 text-left"
+                  className="group w-full flex items-center gap-3 text-[10px] uppercase tracking-[0.22em] font-medium py-3 px-2 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all text-red-500"
                 >
-                  <span className="flex items-center gap-3">
-                    <LogOut size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
-                    <span>End Session</span>
-                  </span>
+                  <LogOut size={13} strokeWidth={1.5} className="opacity-60 group-hover:opacity-100" />
+                  Sign Out
                 </button>
               </div>
             </motion.div>
@@ -242,63 +292,93 @@ const Navbar: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* MOBILE MENU - High Stack Glassmorphism Full-Screen Overlay */}
-      <div className={`fixed inset-0 z-[150] bg-white/60 backdrop-blur-2xl transition-all duration-700 md:hidden flex flex-col ${isMobileMenuOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'}`}>
-        <div className="h-16 shrink-0" /> {/* Spacer for top bar */}
+      {/* ── Mobile menu ──────────────────────────────────── */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed inset-0 z-[150] bg-white dark:bg-black md:hidden flex flex-col"
+          >
+            <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-black/5 dark:border-white/5">
+              <Link to="/" className="font-serif text-sm tracking-[0.28em] text-black dark:text-white">MODERNIST</Link>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 tap-highlight-none">
+                <X size={20} strokeWidth={1.5} className="text-black dark:text-white" />
+              </button>
+            </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar p-8 pt-12 space-y-12">
-          <div className="space-y-6">
-            <p className="text-[10px] uppercase tracking-[0.5em] text-gray-400 font-black mb-8">Archive Navigation</p>
-            <nav className="flex flex-col space-y-4">
-              {categories.map((cat, idx) => (
+            <div className="flex-1 overflow-y-auto no-scrollbar px-6 pt-10 pb-6 space-y-10">
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.6em] text-gray-300 dark:text-gray-700 font-medium mb-7">Collection</p>
+                <nav className="space-y-1">
+                  {allCategories.map((cat, idx) => (
+                    <motion.button
+                      key={cat}
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.5, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                      onClick={() => { scrollToProducts(cat); setIsMobileMenuOpen(false); }}
+                      className={`block w-full text-left py-3 border-b border-black/5 dark:border-white/5 transition-all active:scale-[0.98] tap-highlight-none
+                        ${currentCategory === cat
+                          ? 'text-black dark:text-white'
+                          : 'text-black/30 dark:text-white/30'
+                        }`}
+                      style={{ fontFamily: 'var(--font-primary)', fontSize: 'clamp(1.6rem, 6vw, 2.2rem)', fontWeight: 300, letterSpacing: '-0.01em' }}
+                    >
+                      {cat}
+                    </motion.button>
+                  ))}
+                </nav>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-[9px] uppercase tracking-[0.6em] text-gray-300 dark:text-gray-700 font-medium">Search</p>
+                <div className="flex items-center gap-3 border-b border-black/15 dark:border-white/15 pb-3 focus-within:border-black dark:focus-within:border-white transition-colors">
+                  <Search size={14} strokeWidth={1.5} className="text-gray-300 dark:text-gray-700" />
+                  <input
+                    type="text"
+                    placeholder="Search archive..."
+                    value={searchValue}
+                    onChange={e => setSearchValue(e.target.value)}
+                    className="bg-transparent border-none outline-none flex-1 text-sm text-black dark:text-white placeholder:text-gray-200 dark:placeholder:text-gray-800"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {user ? (
+                  <button
+                    onClick={() => { setIsProfileOpen(true); setIsMobileMenuOpen(false); }}
+                    className="bg-black dark:bg-white text-white dark:text-black py-5 text-[9px] font-semibold uppercase tracking-[0.35em] active:scale-95 transition-all"
+                  >
+                    {displayName.split(' ')[0]}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setAuthModalOpen(true); setIsMobileMenuOpen(false); }}
+                    className="bg-black dark:bg-white text-white dark:text-black py-5 text-[9px] font-semibold uppercase tracking-[0.35em] active:scale-95 transition-all"
+                  >
+                    Sign In
+                  </button>
+                )}
                 <button
-                  key={cat}
-                  onClick={() => { filterByCategory(cat); setIsMobileMenuOpen(false); }}
-                  className="text-4xl font-serif-elegant font-bold uppercase tracking-tight text-left hover:italic transition-all active:scale-95 origin-left tap-highlight-none"
-                  style={{ transitionDelay: `${idx * 40}ms` }}
+                  onClick={() => { toggleCart(); setIsMobileMenuOpen(false); }}
+                  className="border border-black dark:border-white text-black dark:text-white py-5 text-[9px] font-semibold uppercase tracking-[0.35em] active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
-                  {cat}
+                  <ShoppingBag size={13} strokeWidth={1.5} />
+                  {cartCount > 0 ? `Bag (${cartCount})` : 'Bag'}
                 </button>
-              ))}
-            </nav>
-          </div>
-
-          <div className="pt-12 border-t border-black/10 space-y-10">
-            <div className="space-y-4">
-              <p className="text-[10px] uppercase tracking-[0.5em] text-gray-400 font-black">Refine Search</p>
-              <div className="flex items-center border-b border-black/20 focus-within:border-black transition-colors pb-4">
-                <Search size={20} className="text-gray-400" strokeWidth={1.5} />
-                <input
-                  type="text"
-                  placeholder="ARCHIVE QUERY..."
-                  value={searchValue}
-                  onChange={(e) => setSearchValue(e.target.value)}
-                  className="bg-transparent border-none outline-none flex-1 text-sm px-4 uppercase tracking-widest font-black placeholder:text-gray-300"
-                />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => { setAuthModalOpen(true); setIsMobileMenuOpen(false); }}
-                className="bg-black text-white py-6 text-[10px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all flex items-center justify-center"
-              >
-                Identity
-              </button>
-              <button
-                onClick={() => { toggleCart(); setIsMobileMenuOpen(false); }}
-                className="border border-black py-6 text-[10px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all flex items-center justify-center"
-              >
-                Bag ({cartCount})
-              </button>
+            <div className="px-6 py-5 border-t border-black/5 dark:border-white/5">
+              <p className="text-[8px] uppercase tracking-[0.5em] text-gray-300 dark:text-gray-700">MODERNIST Permanent Archive © 2024</p>
             </div>
-          </div>
-        </div>
-
-        <div className="p-8 border-t border-black/5 flex justify-center bg-white/30">
-          <p className="text-[8px] uppercase tracking-[0.4em] text-gray-400 font-bold">MODERNIST permanent archive © 2024</p>
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

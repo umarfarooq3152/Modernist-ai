@@ -1,14 +1,43 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Minus, Plus, ShoppingBag, ArrowRight, Tag, Sparkles, Zap, AlertTriangle, Lock } from 'lucide-react';
+import { X, Minus, Plus, ShoppingBag, ArrowRight, Tag, Sparkles, AlertTriangle, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
+import { supabase } from '../lib/supabase';
 
 const CartSidebar: React.FC = () => {
-  const { cart, isCartOpen, toggleCart, removeFromCart, updateQuantity, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, synergyDiscount, isCartLocked } = useStore();
+  const { cart, isCartOpen, toggleCart, removeFromCart, updateQuantity, cartSubtotal, cartTotal, negotiatedDiscount, appliedCoupon, synergyDiscount, isCartLocked, applyNegotiatedDiscount, addToast } = useStore();
   const navigate = useNavigate();
   const [totalFlashClass, setTotalFlashClass] = useState('');
   const prevDiscountRef = useRef(negotiatedDiscount);
+  const [couponInput, setCouponInput] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
+  const handleApplyCoupon = async () => {
+    const code = couponInput.toUpperCase().trim();
+    if (!code) return;
+    setIsValidatingCoupon(true);
+    try {
+      const { data, error } = await supabase
+        .from('coupons')
+        .select('discount_percent, code')
+        .eq('code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        addToast('Invalid or expired concession code.', 'error');
+        return;
+      }
+      applyNegotiatedDiscount(data.code, data.discount_percent);
+      addToast(`${data.discount_percent}% concession applied.`, 'success');
+      setCouponInput('');
+    } catch {
+      addToast('Failed to validate concession code.', 'error');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
 
   // Flash the total when discount/surcharge changes
   useEffect(() => {
@@ -61,7 +90,7 @@ const CartSidebar: React.FC = () => {
           ) : (
             <div className="space-y-8">
               {cart.map((item) => (
-                <div key={item.product.id} className="flex space-x-4 group relative">
+                <div key={item.cartKey} className="flex space-x-4 group relative">
                   <div className="w-24 aspect-[3/4] flex-shrink-0 bg-gray-50 dark:bg-gray-900 overflow-hidden border border-black/5 dark:border-white/5">
                     <img src={item.product.image_url} alt={item.product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   </div>
@@ -69,34 +98,39 @@ const CartSidebar: React.FC = () => {
                     <div>
                       <div className="flex justify-between items-start">
                         <h3 className="text-xs font-bold uppercase tracking-widest pr-4">{item.product.name}</h3>
-                        <button 
-                          onClick={() => !isCartLocked && removeFromCart(item.product.id)} 
+                        <button
+                          onClick={() => !isCartLocked && removeFromCart(item.cartKey)}
                           disabled={isCartLocked}
                           className={`text-gray-400 dark:text-gray-500 ${!isCartLocked && 'hover:text-black dark:hover:text-white'} ${isCartLocked && 'opacity-30 cursor-not-allowed'}`}
                         >
                           <X size={16} />
                         </button>
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest">{item.product.category}</p>
+                        {(item.selectedSize || item.selectedColor) && (
+                          <span className="text-[8px] uppercase tracking-widest text-gray-500 dark:text-gray-400 font-black">
+                            {[item.selectedSize, item.selectedColor].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
                         {item.quantity >= 2 && (
                           <span className="text-[8px] text-black dark:text-black bg-yellow-400 px-1 py-0.5 font-black uppercase">Volume Protocol Actuated</span>
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <div className={`flex items-center border border-black dark:border-white ${isCartLocked && 'opacity-50 cursor-not-allowed'}`}>
-                        <button 
-                          onClick={() => !isCartLocked && updateQuantity(item.product.id, item.quantity - 1)} 
+                        <button
+                          onClick={() => !isCartLocked && updateQuantity(item.cartKey, item.quantity - 1)}
                           disabled={isCartLocked}
                           className={`p-2 ${!isCartLocked && 'hover:bg-gray-100 dark:hover:bg-gray-900'} ${isCartLocked && 'cursor-not-allowed'}`}
                         >
                           <Minus size={12} />
                         </button>
                         <span className="px-4 text-xs font-bold">{item.quantity}</span>
-                        <button 
-                          onClick={() => !isCartLocked && updateQuantity(item.product.id, item.quantity + 1)} 
+                        <button
+                          onClick={() => !isCartLocked && updateQuantity(item.cartKey, item.quantity + 1)}
                           disabled={isCartLocked}
                           className={`p-2 ${!isCartLocked && 'hover:bg-gray-100 dark:hover:bg-gray-900'} ${isCartLocked && 'cursor-not-allowed'}`}
                         >
@@ -153,6 +187,28 @@ const CartSidebar: React.FC = () => {
                 <span>Shipping Synergy</span>
                 <span>Complimentary</span>
               </div>
+
+              {/* Manual coupon input */}
+              {negotiatedDiscount === 0 && !appliedCoupon && (
+                <div className="flex items-center border-t border-black/5 dark:border-white/5 pt-4 gap-2">
+                  <input
+                    type="text"
+                    placeholder="CONCESSION CODE"
+                    value={couponInput}
+                    onChange={e => setCouponInput(e.target.value.toUpperCase())}
+                    onKeyDown={e => e.key === 'Enter' && handleApplyCoupon()}
+                    className="flex-1 border-b border-black/20 dark:border-white/20 py-2 text-[9px] uppercase tracking-[0.3em] font-black outline-none bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-700"
+                  />
+                  <button
+                    onClick={handleApplyCoupon}
+                    disabled={isValidatingCoupon || !couponInput.trim()}
+                    className="text-[8px] uppercase tracking-[0.3em] font-black border border-black/20 dark:border-white/20 px-3 py-2 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all disabled:opacity-30"
+                  >
+                    {isValidatingCoupon ? '...' : <Tag size={10} />}
+                  </button>
+                </div>
+              )}
+
               <div className="flex justify-between items-end border-t border-black/10 dark:border-white/10 pt-4 mt-4">
                 <span className="text-sm font-bold uppercase tracking-widest">Total Acquisition</span>
                 <span className={`text-xl font-bold transition-all duration-300 ${totalFlashClass} ${negotiatedDiscount < 0 ? 'text-red-500' : ''}`}>${cartTotal.toLocaleString()}</span>

@@ -24,13 +24,8 @@ async function requireAdmin(req: Request): Promise<{ userId: string } | Response
 
   const token = authHeader.slice(7);
 
-  // Verify the JWT via Supabase auth
-  const anonClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-  const { data: { user }, error } = await anonClient.auth.getUser();
+  // Verify the JWT by passing it directly — more reliable in Deno than global headers
+  const { data: { user }, error } = await serviceClient.auth.getUser(token);
 
   if (error || !user) return json({ error: "Unauthorized" }, 401);
 
@@ -70,6 +65,10 @@ function parsePagination(url: URL): { from: number; to: number; page: number; pa
 // ─────────────────────────────────────────────────────────
 
 async function handleStats(): Promise<Response> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayIso = todayStart.toISOString();
+
   const [
     { count: totalProducts },
     { count: totalOrders },
@@ -78,30 +77,41 @@ async function handleStats(): Promise<Response> {
     { data: revenueData },
     { data: recentOrders },
     { data: categoryData },
+    { count: visitorsToday },
+    { count: productViewsToday },
   ] = await Promise.all([
     serviceClient.from("products").select("*", { count: "exact", head: true }),
     serviceClient.from("checkouts").select("*", { count: "exact", head: true }),
     serviceClient.from("reviews").select("*", { count: "exact", head: true }),
     serviceClient.from("clerk_logs").select("*", { count: "exact", head: true }),
     // Revenue by day (last 7 days)
-    serviceClient.rpc("admin_revenue_by_day").maybeSingle().then(() =>
-      serviceClient
-        .from("checkouts")
-        .select("created_at, total_amount, status")
-        .eq("status", "completed")
-        .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-        .order("created_at")
-    ),
-    // Recent 5 orders
     serviceClient
       .from("checkouts")
-      .select("id, created_at, total_amount, status, user_id, profiles(first_name, last_name, email)")
+      .select("created_at, total_amount, status")
+      .eq("status", "completed")
+      .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order("created_at"),
+    // Recent 5 orders (no FK join — profiles is auth.users mirror, fetch separately)
+    serviceClient
+      .from("checkouts")
+      .select("id, created_at, total_amount, status, user_id")
       .order("created_at", { ascending: false })
       .limit(5),
     // Products by category
     serviceClient
       .from("products")
       .select("category"),
+    // Unique visitor sessions today
+    serviceClient
+      .from("page_views")
+      .select("session_id", { count: "exact", head: true })
+      .gte("created_at", todayIso),
+    // Product page views today (only views with a product_id)
+    serviceClient
+      .from("page_views")
+      .select("*", { count: "exact", head: true })
+      .not("product_id", "is", null)
+      .gte("created_at", todayIso),
   ]);
 
   // Aggregate revenue by day
@@ -137,6 +147,18 @@ async function handleStats(): Promise<Response> {
     .select("*", { count: "exact", head: true })
     .eq("status", "accepted");
 
+  // Manual profile join for recent orders (no FK in schema cache)
+  const recentOrdersRaw = recentOrders || [];
+  const recentUserIds = [...new Set(recentOrdersRaw.filter((o: any) => o.user_id).map((o: any) => o.user_id as string))];
+  const profileMap: Record<string, any> = {};
+  if (recentUserIds.length > 0) {
+    const { data: profileRows } = await serviceClient
+      .from("profiles")
+      .select("id, first_name, last_name, email")
+      .in("id", recentUserIds);
+    (profileRows || []).forEach((p: any) => { profileMap[p.id] = p; });
+  }
+
   return json({
     totalProducts: totalProducts || 0,
     totalOrders: totalOrders || 0,
@@ -144,17 +166,22 @@ async function handleStats(): Promise<Response> {
     totalNegotiations: totalNegotiations || 0,
     totalRevenue,
     acceptedNegotiations: acceptedNegotiations || 0,
+    visitorsToday: visitorsToday || 0,
+    productViewsToday: productViewsToday || 0,
     revenueChart,
     categoryChart,
-    recentOrders: (recentOrders || []).map((o: any) => ({
-      id: o.id,
-      createdAt: o.created_at,
-      totalAmount: parseFloat(o.total_amount || "0"),
-      status: o.status,
-      customerName: o.profiles
-        ? `${o.profiles.first_name || ""} ${o.profiles.last_name || ""}`.trim() || o.profiles.email
-        : "Guest",
-    })),
+    recentOrders: recentOrdersRaw.map((o: any) => {
+      const p = profileMap[o.user_id];
+      return {
+        id: o.id,
+        createdAt: o.created_at,
+        totalAmount: parseFloat(o.total_amount || "0"),
+        status: o.status,
+        customerName: p
+          ? `${p.first_name || ""} ${p.last_name || ""}`.trim() || p.email || "Guest"
+          : "Guest",
+      };
+    }),
   });
 }
 
@@ -193,13 +220,21 @@ async function triggerEmbedding(productId: string, authHeader: string) {
 
 async function handleCreateProduct(req: Request): Promise<Response> {
   const body = await req.json();
-  const { name, description, price, bottom_price, category, image_url, tags } = body;
+  const { name, description, price, bottom_price, category, image_url, tags, variants, stock_quantity, low_stock_threshold } = body;
 
   if (!name || price == null) return json({ error: "name and price are required" }, 400);
 
   const { data, error } = await serviceClient
     .from("products")
-    .insert({ name, description, price, bottom_price: bottom_price ?? price * 0.7, category, image_url, tags: tags || [] })
+    .insert({
+      name, description, price,
+      bottom_price: bottom_price ?? price * 0.7,
+      category, image_url,
+      tags: tags || [],
+      variants: variants || { sizes: [], colors: [] },
+      ...(stock_quantity != null && { stock_quantity }),
+      ...(low_stock_threshold != null && { low_stock_threshold }),
+    })
     .select()
     .single();
 
@@ -213,7 +248,7 @@ async function handleCreateProduct(req: Request): Promise<Response> {
 
 async function handleUpdateProduct(productId: string, req: Request): Promise<Response> {
   const body = await req.json();
-  const allowed = ["name", "description", "price", "bottom_price", "category", "image_url", "tags"];
+  const allowed = ["name", "description", "price", "bottom_price", "category", "image_url", "tags", "variants", "stock_quantity", "low_stock_threshold"];
   const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)));
 
   const { data, error } = await serviceClient
@@ -278,19 +313,47 @@ async function handleGetOrders(url: URL): Promise<Response> {
 
   let query = serviceClient
     .from("checkouts")
-    .select(`
-      *,
-      profiles (id, first_name, last_name, email),
-      checkout_items (*)
-    `, { count: "exact" })
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
   if (status) query = query.eq("status", status);
   if (search) query = query.ilike("id", `%${search}%`);
 
-  const { data, error, count } = await query;
+  const { data: orders, error, count } = await query;
   if (error) return json({ error: error.message }, 500);
+
+  const orderIds = (orders || []).map((o: any) => o.id as string);
+
+  // Manual checkout_items join — no FK in PostgREST schema cache
+  const itemsMap: Record<string, any[]> = {};
+  if (orderIds.length > 0) {
+    const { data: itemRows } = await serviceClient
+      .from("checkout_items")
+      .select("*")
+      .in("checkout_id", orderIds);
+    (itemRows || []).forEach((item: any) => {
+      if (!itemsMap[item.checkout_id]) itemsMap[item.checkout_id] = [];
+      itemsMap[item.checkout_id].push(item);
+    });
+  }
+
+  // Manual profile join — no FK in PostgREST schema cache
+  const userIds = [...new Set((orders || []).filter((o: any) => o.user_id).map((o: any) => o.user_id as string))];
+  const profileMap: Record<string, any> = {};
+  if (userIds.length > 0) {
+    const { data: profileRows } = await serviceClient
+      .from("profiles")
+      .select("id, first_name, last_name, email")
+      .in("id", userIds);
+    (profileRows || []).forEach((p: any) => { profileMap[p.id] = p; });
+  }
+
+  const data = (orders || []).map((o: any) => ({
+    ...o,
+    checkout_items: itemsMap[o.id] || [],
+    profiles: profileMap[o.user_id] || null,
+  }));
   return json({ data, count });
 }
 
@@ -325,6 +388,118 @@ async function handleGetNegotiations(url: URL): Promise<Response> {
   const { data, error, count } = await query;
   if (error) return json({ error: error.message }, 500);
   return json({ data, count });
+}
+
+// ─────────────────────────────────────────────────────────
+// Coupons
+// ─────────────────────────────────────────────────────────
+
+async function handleGetCoupons(): Promise<Response> {
+  const { data, error } = await serviceClient
+    .from("coupons")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return json({ data });
+}
+
+async function handleCreateCoupon(req: Request): Promise<Response> {
+  const { code, discount_percent, max_uses, expires_at } = await req.json();
+  if (!code || discount_percent == null) return json({ error: "code and discount_percent are required" }, 400);
+  const { data, error } = await serviceClient
+    .from("coupons")
+    .insert({ code: String(code).toUpperCase().trim(), discount_percent, max_uses: max_uses || null, expires_at: expires_at || null })
+    .select()
+    .single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ data }, 201);
+}
+
+async function handleUpdateCoupon(id: string, req: Request): Promise<Response> {
+  const body = await req.json();
+  const allowed = ["code", "discount_percent", "max_uses", "expires_at", "is_active"];
+  const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)));
+  const { data, error } = await serviceClient
+    .from("coupons")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ data });
+}
+
+async function handleDeleteCoupon(id: string): Promise<Response> {
+  const { error } = await serviceClient.from("coupons").delete().eq("id", id);
+  if (error) return json({ error: error.message }, 500);
+  return json({ success: true });
+}
+
+// ─────────────────────────────────────────────────────────
+// Customers / Patrons
+// ─────────────────────────────────────────────────────────
+
+async function handleGetCustomers(url: URL): Promise<Response> {
+  const { from, to, pageSize } = parsePagination(url);
+  const search = url.searchParams.get("search") || "";
+
+  let query = serviceClient
+    .from("profiles")
+    .select("id, email, first_name, last_name, created_at", { count: "exact" })
+    .range(from, to)
+    .order("created_at", { ascending: false });
+
+  if (search) {
+    query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+  }
+
+  const { data: profiles, error, count } = await query;
+  if (error) throw error;
+  if (!profiles || profiles.length === 0) return json({ data: [], count: 0 });
+
+  const profileIds = profiles.map((p: any) => p.id);
+  const { data: orders } = await serviceClient
+    .from("checkouts")
+    .select("user_id, total_amount")
+    .in("user_id", profileIds)
+    .eq("status", "completed");
+
+  const statsMap = new Map<string, { count: number; total: number }>();
+  (orders || []).forEach((o: any) => {
+    const s = statsMap.get(o.user_id) || { count: 0, total: 0 };
+    s.count++;
+    s.total += parseFloat(o.total_amount || "0");
+    statsMap.set(o.user_id, s);
+  });
+
+  const data = profiles.map((p: any) => ({
+    ...p,
+    order_count: statsMap.get(p.id)?.count ?? 0,
+    total_spend: statsMap.get(p.id)?.total ?? 0,
+  }));
+
+  return json({ data, count });
+}
+
+async function handleBackfillEmbeddings(req: Request): Promise<Response> {
+  const { data: products, error } = await serviceClient
+    .from("products")
+    .select("id")
+    .is("embedding", null);
+
+  if (error) return json({ error: error.message }, 500);
+  if (!products || products.length === 0) return json({ queued: 0, message: "All products already have embeddings." });
+
+  const productIds = products.map((p: { id: string }) => p.id);
+
+  // Forward to generate-embeddings using the caller's admin token
+  void fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embeddings`, {
+    method: "POST",
+    headers: { Authorization: req.headers.get("Authorization") || "", "Content-Type": "application/json" },
+    body: JSON.stringify({ product_ids: productIds }),
+  }).catch((e: any) => console.warn("backfill trigger failed:", e.message));
+
+  return json({ queued: productIds.length, message: `Embedding ${productIds.length} product(s) in the background.` });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -366,6 +541,21 @@ serve(async (req: Request) => {
 
     if (resource === "negotiations" && method === "GET") {
       return await handleGetNegotiations(url);
+    }
+
+    if (resource === "coupons") {
+      if (method === "GET" && !id) return await handleGetCoupons();
+      if (method === "POST") return await handleCreateCoupon(req);
+      if (method === "PATCH" && id) return await handleUpdateCoupon(id, req);
+      if (method === "DELETE" && id) return await handleDeleteCoupon(id);
+    }
+
+    if (resource === "customers" && method === "GET") {
+      return await handleGetCustomers(url);
+    }
+
+    if (resource === "backfill-embeddings" && method === "POST") {
+      return await handleBackfillEmbeddings(req);
     }
 
     return json({ error: `Unknown route: ${method} /${resource}` }, 404);
