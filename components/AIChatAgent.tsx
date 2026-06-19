@@ -2407,25 +2407,23 @@ CURRENT STATE:
         </button>
       )}
 
-      <div className={`fixed inset-y-0 right-0 z-[130] w-full sm:w-[520px] transition-all duration-700 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        <div className="absolute inset-0 glass-panel border-l border-black/5 dark:border-white/10" />
-        <div className="relative h-full flex flex-col">
+      <div className={`fixed inset-y-0 right-0 z-[130] w-full sm:w-[520px] bg-white dark:bg-[#0c0c0c] border-l border-black/10 dark:border-white/10 shadow-2xl transition-all duration-700 transform flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
 
           {/* Header */}
-          <div className="px-6 md:px-10 py-5 border-b border-black/5 dark:border-white/5 flex justify-between items-center shrink-0">
+          <div className="px-6 md:px-10 py-5 border-b border-black/8 dark:border-white/8 flex justify-between items-center shrink-0">
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 {embeddingModelStatus === 'ready' && (
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 )}
-                <span className="text-[9px] uppercase tracking-[0.5em] text-gray-400 dark:text-gray-500 font-black">
+                <span className="text-[9px] uppercase tracking-[0.5em] text-gray-400 font-black">
                   Archive Concierge{embeddingModelStatus === 'ready' ? ' · RAG Active' : ''}
                 </span>
               </div>
-              <h2 className="font-serif text-2xl md:text-3xl font-bold uppercase tracking-tighter leading-none">The Clerk</h2>
+              <h2 className="font-serif text-2xl md:text-3xl font-bold uppercase tracking-tighter leading-none text-black dark:text-white">The Clerk</h2>
             </div>
-            <button onClick={() => setIsOpen(false)} className="p-2 -mr-2 opacity-50 hover:opacity-100 transition-opacity active:scale-90">
-              <X size={24} strokeWidth={1.5} />
+            <button onClick={() => setIsOpen(false)} className="p-2 -mr-2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white transition-colors active:scale-90">
+              <X size={22} strokeWidth={1.5} />
             </button>
           </div>
 
@@ -2436,17 +2434,17 @@ CURRENT STATE:
                 <h3 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight text-black dark:text-white">
                   "So, what brings you in today?"
                 </h3>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed mb-8">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed mb-8">
                   I can search the collection, add pieces to your bag, and negotiate a price — all through conversation.
                 </p>
                 <div className="space-y-3">
-                  <p className="text-[9px] uppercase tracking-[0.4em] text-gray-300 dark:text-gray-600 font-black">Try asking</p>
+                  <p className="text-[9px] uppercase tracking-[0.4em] text-gray-400 dark:text-gray-500 font-black">Try asking</p>
                   <div className="flex flex-wrap gap-2">
                     {quickActions.map(qa => (
                       <button
                         key={qa.label}
                         onClick={() => setInput(qa.action)}
-                        className="px-3 py-2 border border-black/10 dark:border-white/10 text-[9px] uppercase tracking-widest font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-95"
+                        className="px-3 py-2 border border-black/15 dark:border-white/15 text-[9px] uppercase tracking-widest font-black text-black dark:text-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all active:scale-95"
                       >
                         {qa.label}
                       </button>
@@ -2518,7 +2516,7 @@ CURRENT STATE:
           </div>
 
           {/* Input Bar */}
-          <div className="p-6 md:p-10 border-t border-black/5 dark:border-white/5 bg-white/40 dark:bg-black/40 backdrop-blur-xl">
+          <div className="p-6 md:p-10 border-t border-black/10 dark:border-white/10 bg-white dark:bg-[#0c0c0c]">
             <div className="relative flex items-center gap-4">
               <div className="relative flex-1">
                 <input
@@ -2527,7 +2525,7 @@ CURRENT STATE:
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !loading && handleSendMessage()}
                   placeholder="Try: Show me summer dresses..."
-                  className="w-full bg-transparent border-b border-black/20 dark:border-white/20 focus:border-black dark:focus:border-white outline-none py-5 text-sm uppercase tracking-[0.3em] font-bold transition-colors placeholder:text-gray-300 dark:placeholder:text-gray-600"
+                  className="w-full bg-transparent border-b border-black/20 dark:border-white/20 focus:border-black dark:focus:border-white outline-none py-5 text-sm uppercase tracking-[0.3em] font-bold text-black dark:text-white transition-colors placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   disabled={loading}
                 />
                 <button
@@ -2535,12 +2533,11 @@ CURRENT STATE:
                   className="absolute right-0 p-4 active:scale-90 transition-transform"
                   disabled={loading || !input.trim()}
                 >
-                  <ChevronRight size={28} className={loading || !input.trim() ? 'text-gray-200 dark:text-gray-700' : 'text-black dark:text-white'} />
+                  <ChevronRight size={28} className={loading || !input.trim() ? 'text-gray-300 dark:text-gray-600' : 'text-black dark:text-white'} />
                 </button>
               </div>
             </div>
           </div>
-        </div>
       </div>
     </>
   );
