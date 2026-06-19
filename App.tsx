@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route, useLocation, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, useLocation, Link, Navigate } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
@@ -439,6 +439,13 @@ const Footer: React.FC = () => (
   </footer>
 );
 
+const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, profile, loading } = useAuth();
+  if (loading) return null;
+  if (!user || profile?.role !== 'admin') return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
 const AppContent: React.FC = () => {
   const location = useLocation();
   const isAdminPath = location.pathname.startsWith('/admin');
@@ -459,7 +466,7 @@ const AppContent: React.FC = () => {
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders" element={<OrderHistory />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/admin/*" element={<Admin />} />
+          <Route path="/admin/*" element={<AdminGuard><Admin /></AdminGuard>} />
           <Route path="/search" element={<Search />} />
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/password-reset" element={<PasswordReset />} />

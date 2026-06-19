@@ -20,7 +20,7 @@ const CartSidebar: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('coupons')
-        .select('discount_percent, code')
+        .select('id, discount_percent, code, max_uses, uses_count')
         .eq('code', code)
         .eq('is_active', true)
         .maybeSingle();
@@ -29,6 +29,11 @@ const CartSidebar: React.FC = () => {
         addToast('Invalid or expired concession code.', 'error');
         return;
       }
+      if (data.max_uses !== null && data.uses_count >= data.max_uses) {
+        addToast('This concession code has reached its usage limit.', 'error');
+        return;
+      }
+      await supabase.from('coupons').update({ uses_count: data.uses_count + 1 }).eq('id', data.id);
       applyNegotiatedDiscount(data.code, data.discount_percent);
       addToast(`${data.discount_percent}% concession applied.`, 'success');
       setCouponInput('');

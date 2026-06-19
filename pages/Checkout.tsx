@@ -113,13 +113,15 @@ const Checkout: React.FC = () => {
       // ─── Step 2: Insert Checkout Items ───
       if (checkoutRecord?.id) {
         // Insert items - for items with quantity > 1, insert multiple rows
-        const checkoutItems = cart.flatMap(item => 
+        const checkoutItems = cart.flatMap(item =>
           Array.from({ length: item.quantity }, () => ({
             order_id: checkoutRecord.id,
-            item_id: parseInt(item.product.id),
+            item_id: item.product.id,
             name: item.product.name,
-            category: item.product.category,
-            price: item.product.price
+            price: item.product.price,
+            image_url: item.product.image_url ?? null,
+            selected_size: item.selectedSize ?? null,
+            selected_color: item.selectedColor ?? null,
           }))
         );
 

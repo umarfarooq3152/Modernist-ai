@@ -629,7 +629,7 @@ const AIChatAgent: React.FC = () => {
 
     // Calculate total and minimum acceptable total (based on bottom_price)
     const total = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-    const minTotal = cart.reduce((sum, item) => sum + (item.product.bottom_price * item.quantity), 0);
+    const minTotal = cart.reduce((sum, item) => sum + ((item.product.bottom_price ?? item.product.price * 0.7) * item.quantity), 0);
 
     // Max discount percentage that keeps us above bottom_price
     const maxDiscountAmount = total - minTotal;

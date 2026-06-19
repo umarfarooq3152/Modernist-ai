@@ -326,15 +326,16 @@ async function handleGetOrders(url: URL): Promise<Response> {
   const orderIds = (orders || []).map((o: any) => o.id as string);
 
   // Manual checkout_items join — no FK in PostgREST schema cache
+  // checkout_items uses order_id (TEXT) as the FK back to checkouts.id
   const itemsMap: Record<string, any[]> = {};
   if (orderIds.length > 0) {
     const { data: itemRows } = await serviceClient
       .from("checkout_items")
       .select("*")
-      .in("checkout_id", orderIds);
+      .in("order_id", orderIds);
     (itemRows || []).forEach((item: any) => {
-      if (!itemsMap[item.checkout_id]) itemsMap[item.checkout_id] = [];
-      itemsMap[item.checkout_id].push(item);
+      if (!itemsMap[item.order_id]) itemsMap[item.order_id] = [];
+      itemsMap[item.order_id].push(item);
     });
   }
 
