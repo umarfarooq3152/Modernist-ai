@@ -1,6 +1,9 @@
 
 import { supabase } from './supabase';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 // ─────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────
@@ -112,16 +115,22 @@ async function adminFetch<T>(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
-  const { data, error } = await supabase.functions.invoke(`admin-api/${path}`, {
-    ...options,
+  const method = (options.method || 'GET').toUpperCase();
+  const url = `${SUPABASE_URL}/functions/v1/admin-api/${path}`;
+
+  const response = await fetch(url, {
+    method,
     headers: {
-      Authorization: `Bearer ${session.access_token}`,
+      'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      'apikey': SUPABASE_ANON_KEY,
+      ...(options.headers as Record<string, string> || {}),
     },
+    body: options.body,
   });
 
-  if (error) throw new Error(error.message || 'Admin API error');
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
   if (data?.error) throw new Error(data.error);
   return data as T;
 }

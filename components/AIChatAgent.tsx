@@ -66,6 +66,8 @@ interface ChatMessage {
   tryOnResult?: string;
   isTryOn?: boolean;
   coupon?: { code: string; percent: number; reason: string };
+  error?: boolean;
+  searchMetadata?: { method: string; searchTime: number; resultsCount: number };
 }
 
 class BM25Ranker {
@@ -2410,29 +2412,35 @@ CURRENT STATE:
         <div className="relative h-full flex flex-col">
 
           {/* Header */}
-          <div className="p-6 md:p-10 border-b border-black/5 dark:border-white/5 flex justify-between items-end">
+          <div className="px-6 md:px-10 py-5 border-b border-black/5 dark:border-white/5 flex justify-between items-center shrink-0">
             <div>
-              <span className="text-[10px] uppercase tracking-[0.5em] text-gray-400 dark:text-gray-500 font-black">
-                Archive Concierge {embeddingModelStatus === 'ready' && '• RAG ACTIVE'}
-              </span>
-              <h2 className="font-serif text-3xl md:text-5xl font-bold uppercase tracking-tighter">The Clerk</h2>
-              <span className="text-[8px] uppercase tracking-[0.3em] text-gray-300 dark:text-gray-600 font-bold mt-1 block">
-                Hybrid Search • BM25 + Vector • RRF Fusion
-              </span>
+              <div className="flex items-center gap-2 mb-0.5">
+                {embeddingModelStatus === 'ready' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                )}
+                <span className="text-[9px] uppercase tracking-[0.5em] text-gray-400 dark:text-gray-500 font-black">
+                  Archive Concierge{embeddingModelStatus === 'ready' ? ' · RAG Active' : ''}
+                </span>
+              </div>
+              <h2 className="font-serif text-2xl md:text-3xl font-bold uppercase tracking-tighter leading-none">The Clerk</h2>
             </div>
-            <button onClick={() => setIsOpen(false)} className="p-3 -mr-3 active:scale-90"><X size={32} strokeWidth={1} /></button>
+            <button onClick={() => setIsOpen(false)} className="p-2 -mr-2 opacity-50 hover:opacity-100 transition-opacity active:scale-90">
+              <X size={24} strokeWidth={1.5} />
+            </button>
           </div>
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar p-6 md:p-10 space-y-6 pb-24">
             {messages.length === 0 && (
-              <div className="h-full flex flex-col justify-center max-w-[360px] py-16">
-                <h3 className="font-serif text-3xl md:text-4xl mb-6 italic leading-tight">"So, what brings you in today?"</h3>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 leading-relaxed font-bold mb-8">
-                  I'm The Clerk — powered by production-grade RAG with hybrid search (BM25 keyword matching + vector embeddings + reciprocal rank fusion). Search, shop, negotiate, checkout — all through conversation.
+              <div className="h-full flex flex-col justify-center max-w-[340px] py-12">
+                <h3 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight text-black dark:text-white">
+                  "So, what brings you in today?"
+                </h3>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed mb-8">
+                  I can search the collection, add pieces to your bag, and negotiate a price — all through conversation.
                 </p>
                 <div className="space-y-3">
-                  <p className="text-[9px] uppercase tracking-[0.4em] text-gray-300 dark:text-gray-600 font-black">Try These</p>
+                  <p className="text-[9px] uppercase tracking-[0.4em] text-gray-300 dark:text-gray-600 font-black">Try asking</p>
                   <div className="flex flex-wrap gap-2">
                     {quickActions.map(qa => (
                       <button
@@ -2450,49 +2458,37 @@ CURRENT STATE:
 
             {messages.map((m, i) => (
               <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2 duration-500`}>
-                <div className={`max-w-[95%] p-4 ${m.role === 'user' ? 'text-right font-light italic text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900' : 'text-left text-black dark:text-white bg-black/5 dark:bg-white/5'} ${m.error ? 'border-l-2 border-red-500 dark:border-red-400' : ''}`}>
-                  {m.error && <AlertCircle size={12} className="text-red-500 dark:text-red-400 mb-2 inline-block mr-1" />}
-                  <span className="whitespace-pre-line text-sm leading-relaxed">{m.text}</span>
 
-                  {/* Search Metadata */}
-                  {m.searchMetadata && (
-                    <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10">
-                      <p className="text-[8px] uppercase tracking-[0.3em] text-gray-400 dark:text-gray-500">
-                        {m.searchMetadata.method.toUpperCase()} • {m.searchMetadata.searchTime}ms • {m.searchMetadata.resultsCount} results
+                {m.role === 'user' ? (
+                  <div className="max-w-[80%] bg-black dark:bg-white text-white dark:text-black px-5 py-3 text-sm font-light">
+                    <span className="whitespace-pre-line leading-relaxed">{m.text}</span>
+                  </div>
+                ) : (
+                  <div className={`max-w-[95%] ${m.error ? 'border-l-2 border-red-400 pl-4 py-1' : ''}`}>
+                    {m.error && (
+                      <div className="flex items-start gap-2 mb-1">
+                        <AlertCircle size={13} className="text-red-400 mt-0.5 shrink-0" />
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">Connection error</span>
+                      </div>
+                    )}
+                    <span className="whitespace-pre-line text-sm leading-relaxed text-black dark:text-white">{m.text}</span>
+
+                    {m.searchMetadata && (
+                      <p className="mt-2 text-[8px] uppercase tracking-[0.3em] text-gray-300 dark:text-gray-600">
+                        {m.searchMetadata.method} · {m.searchMetadata.searchTime}ms · {m.searchMetadata.resultsCount} results
                       </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
-                {/* PRODUCT CARDS - CRITICAL FEATURE */}
                 {m.products && m.products.length > 0 && (
-                  <div className="flex gap-3 overflow-x-auto mt-3 pb-2 w-full no-scrollbar">
+                  <div className="flex gap-3 overflow-x-auto mt-4 pb-2 w-full no-scrollbar">
                     {m.products.map(p => <ProductCardInChat key={p.id} product={p} />)}
                   </div>
                 )}
 
                 {m.coupon && <CouponCard coupon={m.coupon} />}
-                {m.products && m.products.length > 0 && (
-                  <div className="mt-4 w-full max-w-md space-y-2">
-                    {m.products.map((product) => (
-                      <div key={product.id} className="flex gap-3 p-3 border border-black/10 dark:border-white/10 bg-white dark:bg-black hover:bg-gray-50 dark:hover:bg-gray-900 transition-all">
-                        <img src={product.image_url} alt={product.name} className="w-16 h-16 object-cover" />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-bold uppercase truncate">{product.name}</h4>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400">${product.price}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => { addToCartWithQuantity(product.id, 1); addToast(`${product.name} added`, 'success'); }}
-                            className="px-3 py-1.5 text-[9px] uppercase tracking-wider font-black bg-black dark:bg-white text-white dark:text-black hover:opacity-80 transition-opacity active:scale-95"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+
                 {m.isTryOn && m.tryOnResult && (
                   <div className="mt-3 w-48 aspect-[3/4] overflow-hidden border border-black/10 dark:border-white/10">
                     <img src={m.tryOnResult} alt="Virtual try-on" className="w-full h-full object-cover" />

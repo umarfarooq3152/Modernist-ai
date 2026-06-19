@@ -24,13 +24,8 @@ async function requireAdmin(req: Request): Promise<{ userId: string } | Response
 
   const token = authHeader.slice(7);
 
-  // Verify the JWT via Supabase auth
-  const anonClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-  const { data: { user }, error } = await anonClient.auth.getUser();
+  // Verify the JWT by passing it directly — more reliable in Deno than global headers
+  const { data: { user }, error } = await serviceClient.auth.getUser(token);
 
   if (error || !user) return json({ error: "Unauthorized" }, 401);
 
@@ -96,10 +91,10 @@ async function handleStats(): Promise<Response> {
       .eq("status", "completed")
       .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order("created_at"),
-    // Recent 5 orders
+    // Recent 5 orders (no FK join — profiles is auth.users mirror, fetch separately)
     serviceClient
       .from("checkouts")
-      .select("id, created_at, total_amount, status, user_id, profiles(first_name, last_name, email)")
+      .select("id, created_at, total_amount, status, user_id")
       .order("created_at", { ascending: false })
       .limit(5),
     // Products by category
@@ -152,6 +147,18 @@ async function handleStats(): Promise<Response> {
     .select("*", { count: "exact", head: true })
     .eq("status", "accepted");
 
+  // Manual profile join for recent orders (no FK in schema cache)
+  const recentOrdersRaw = recentOrders || [];
+  const recentUserIds = [...new Set(recentOrdersRaw.filter((o: any) => o.user_id).map((o: any) => o.user_id as string))];
+  const profileMap: Record<string, any> = {};
+  if (recentUserIds.length > 0) {
+    const { data: profileRows } = await serviceClient
+      .from("profiles")
+      .select("id, first_name, last_name, email")
+      .in("id", recentUserIds);
+    (profileRows || []).forEach((p: any) => { profileMap[p.id] = p; });
+  }
+
   return json({
     totalProducts: totalProducts || 0,
     totalOrders: totalOrders || 0,
@@ -163,15 +170,18 @@ async function handleStats(): Promise<Response> {
     productViewsToday: productViewsToday || 0,
     revenueChart,
     categoryChart,
-    recentOrders: (recentOrders || []).map((o: any) => ({
-      id: o.id,
-      createdAt: o.created_at,
-      totalAmount: parseFloat(o.total_amount || "0"),
-      status: o.status,
-      customerName: o.profiles
-        ? `${o.profiles.first_name || ""} ${o.profiles.last_name || ""}`.trim() || o.profiles.email
-        : "Guest",
-    })),
+    recentOrders: recentOrdersRaw.map((o: any) => {
+      const p = profileMap[o.user_id];
+      return {
+        id: o.id,
+        createdAt: o.created_at,
+        totalAmount: parseFloat(o.total_amount || "0"),
+        status: o.status,
+        customerName: p
+          ? `${p.first_name || ""} ${p.last_name || ""}`.trim() || p.email || "Guest"
+          : "Guest",
+      };
+    }),
   });
 }
 
@@ -303,19 +313,47 @@ async function handleGetOrders(url: URL): Promise<Response> {
 
   let query = serviceClient
     .from("checkouts")
-    .select(`
-      *,
-      profiles (id, first_name, last_name, email),
-      checkout_items (*)
-    `, { count: "exact" })
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
   if (status) query = query.eq("status", status);
   if (search) query = query.ilike("id", `%${search}%`);
 
-  const { data, error, count } = await query;
+  const { data: orders, error, count } = await query;
   if (error) return json({ error: error.message }, 500);
+
+  const orderIds = (orders || []).map((o: any) => o.id as string);
+
+  // Manual checkout_items join — no FK in PostgREST schema cache
+  const itemsMap: Record<string, any[]> = {};
+  if (orderIds.length > 0) {
+    const { data: itemRows } = await serviceClient
+      .from("checkout_items")
+      .select("*")
+      .in("checkout_id", orderIds);
+    (itemRows || []).forEach((item: any) => {
+      if (!itemsMap[item.checkout_id]) itemsMap[item.checkout_id] = [];
+      itemsMap[item.checkout_id].push(item);
+    });
+  }
+
+  // Manual profile join — no FK in PostgREST schema cache
+  const userIds = [...new Set((orders || []).filter((o: any) => o.user_id).map((o: any) => o.user_id as string))];
+  const profileMap: Record<string, any> = {};
+  if (userIds.length > 0) {
+    const { data: profileRows } = await serviceClient
+      .from("profiles")
+      .select("id, first_name, last_name, email")
+      .in("id", userIds);
+    (profileRows || []).forEach((p: any) => { profileMap[p.id] = p; });
+  }
+
+  const data = (orders || []).map((o: any) => ({
+    ...o,
+    checkout_items: itemsMap[o.id] || [],
+    profiles: profileMap[o.user_id] || null,
+  }));
   return json({ data, count });
 }
 

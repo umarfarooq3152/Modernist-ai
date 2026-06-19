@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { AppShell } from '@/components/app-shell';
+import { Dashboard } from '@/components/dashboard';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -58,7 +60,7 @@ const StatCard: React.FC<{
       {loading ? (
         <div className="h-8 w-24 bg-black/5 dark:bg-white/5 animate-pulse" />
       ) : (
-        <h3 className="text-3xl font-serif-elegant font-bold uppercase dark:text-white">{value}</h3>
+        <h3 className="text-2xl font-sans font-black tabular-nums dark:text-white">{value}</h3>
       )}
     </div>
   </div>
@@ -114,17 +116,15 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 // ─────────────────────────────────────────────────────────
 
 const AdminDashboard: React.FC = () => {
-  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [apiStats, setApiStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
 
   const fetchStats = useCallback(() => {
     setLoading(true);
     adminApi.stats.get()
-      .then(data => { setStats(data); setLastUpdated(new Date()); setError(null); })
+      .then(data => { setApiStats(data); setLastUpdated(new Date()); setError(null); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -135,154 +135,68 @@ const AdminDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  const COLORS = isDark
-    ? ['#ffffff', '#aaaaaa', '#666666', '#444444']
-    : ['#000000', '#444444', '#888888', '#CCCCCC'];
-
-  const gridColor = isDark ? '#333' : '#eee';
-  const tickColor = isDark ? '#888' : '#000';
-  const areaColor = isDark ? '#fff' : '#000';
-  const tooltipBg = isDark ? '#fff' : '#000';
-  const tooltipText = isDark ? '#000' : '#fff';
+  const statsItems = apiStats ? [
+    { label: 'Revenue', value: `$${apiStats.totalRevenue.toLocaleString()}`, delta: 0 },
+    { label: 'Orders', value: String(apiStats.totalOrders), delta: 0 },
+    { label: 'Products', value: String(apiStats.totalProducts), delta: 0 },
+    { label: 'Reviews', value: String(apiStats.totalReviews), delta: 0 },
+  ] : undefined;
 
   return (
-    <div className="space-y-12 page-reveal">
-      <div className="border-b border-black dark:border-white/20 pb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Command Center</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Overview</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {lastUpdated && (
-            <span className="text-[9px] uppercase tracking-widest text-gray-400">
-              Updated {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
-          <button
-            onClick={fetchStats}
-            disabled={loading}
-            className="flex items-center gap-2 border border-black/20 dark:border-white/20 dark:text-white px-4 py-2 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all disabled:opacity-40"
-          >
-            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
-          </button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ' '}
+        </p>
+        <button
+          onClick={fetchStats}
+          disabled={loading}
+          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
       {error && (
-        <div className="flex items-center gap-4 border border-red-200 bg-red-50 p-4 text-red-700">
-          <AlertTriangle size={16} />
-          <span className="text-xs font-bold">{error}</span>
+        <div className="flex items-center gap-3 border border-red-200 bg-red-50 p-3 text-red-700">
+          <AlertTriangle size={14} />
+          <span className="text-xs">{error}</span>
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-        <div className="col-span-2 md:col-span-4 lg:col-span-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <StatCard title="Revenue" value={stats ? `$${stats.totalRevenue.toLocaleString()}` : '-'} icon={<DollarSign size={16} />} loading={loading} />
-          <StatCard title="Orders" value={stats?.totalOrders ?? '-'} icon={<ShoppingBag size={16} />} loading={loading} />
-          <StatCard title="Products" value={stats?.totalProducts ?? '-'} icon={<Package size={16} />} loading={loading} />
-          <StatCard title="Reviews" value={stats?.totalReviews ?? '-'} icon={<Star size={16} />} loading={loading} />
-          <StatCard title="Haggles" value={stats?.totalNegotiations ?? '-'} icon={<MessageSquare size={16} />} loading={loading} />
-          <StatCard
-            title="Deal Rate"
-            value={stats ? `${stats.totalNegotiations > 0 ? Math.round((stats.acceptedNegotiations / stats.totalNegotiations) * 100) : 0}%` : '-'}
-            icon={<Target size={16} />}
-            loading={loading}
-          />
-        </div>
-        <div className="col-span-2 grid grid-cols-1 gap-4">
-          <StatCard title="Visitors Today" value={stats?.visitorsToday ?? '-'} icon={<TrendingUp size={16} />} loading={loading} />
-          <StatCard title="Product Views" value={stats?.productViewsToday ?? '-'} icon={<ArrowRight size={16} />} loading={loading} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-8 bg-white/50 dark:bg-white/[0.04] backdrop-blur-xl border border-black/5 dark:border-white/10 p-8">
-          <p className="text-[10px] uppercase tracking-[0.4em] font-black text-gray-400 mb-10">Revenue (last 7 days)</p>
-          <div className="h-[300px]">
-            {loading ? (
-              <div className="h-full bg-black/5 dark:bg-white/5 animate-pulse" />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats?.revenueChart || []}>
-                  <defs>
-                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={areaColor} stopOpacity={0.15} />
-                      <stop offset="95%" stopColor={areaColor} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 900, fill: tickColor }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: tickColor }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: tooltipBg, color: tooltipText, border: 'none', fontSize: 10 }}
-                    formatter={(v: number) => [`$${v.toLocaleString()}`, 'Revenue']}
-                  />
-                  <Area type="monotone" dataKey="revenue" stroke={areaColor} fillOpacity={1} fill="url(#colorRev)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        <div className="lg:col-span-4 bg-white/50 dark:bg-white/[0.04] backdrop-blur-xl border border-black/5 dark:border-white/10 p-8 flex flex-col justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.4em] font-black text-gray-400 mb-8">Category Split</p>
-            {loading ? (
-              <div className="h-48 bg-black/5 dark:bg-white/5 animate-pulse" />
-            ) : (
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={stats?.categoryChart || []} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value">
-                      {(stats?.categoryChart || []).map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-          <div className="space-y-3 mt-4">
-            {(stats?.categoryChart || []).map((item, i) => (
-              <div key={item.name} className="flex justify-between items-center text-[10px] uppercase tracking-widest font-black dark:text-white">
-                <span className="flex items-center gap-2">
-                  <div className="w-2 h-2" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                  {item.name}
-                </span>
-                <span>{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <Dashboard statsItems={statsItems} statsLoading={loading} />
 
       {/* Recent Orders */}
-      <div className="bg-white/50 dark:bg-white/[0.04] backdrop-blur-xl border border-black/5 dark:border-white/10 p-8">
-        <p className="text-[10px] uppercase tracking-[0.4em] font-black text-gray-400 mb-8">Recent Orders</p>
+      <div className="border bg-background">
+        <div className="p-6 border-b">
+          <p className="text-sm font-medium">Recent Orders</p>
+        </div>
         {loading ? (
-          <div className="space-y-4">{[...Array(3)].map((_, i) => <div key={i} className="h-12 bg-black/5 dark:bg-white/5 animate-pulse" />)}</div>
+          <div className="p-6 space-y-3">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-10 bg-muted animate-pulse" />)}
+          </div>
         ) : (
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-black/10 dark:border-white/10">
+              <tr className="border-b">
                 {['Order ID', 'Customer', 'Amount', 'Status', 'Date'].map(h => (
-                  <th key={h} className="py-4 text-[10px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
+                  <th key={h} className="px-6 py-3 text-[10px] uppercase tracking-widest font-bold text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-black/5 dark:divide-white/5">
-              {(stats?.recentOrders || []).map(o => (
-                <tr key={o.id} className="group hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
-                  <td className="py-4 text-[10px] font-bold uppercase tracking-widest dark:text-white">#{String(o.id).slice(0, 8)}</td>
-                  <td className="py-4 text-[10px] font-bold uppercase tracking-widest dark:text-white">{o.customerName}</td>
-                  <td className="py-4 text-sm font-black dark:text-white">${o.totalAmount.toLocaleString()}</td>
-                  <td className="py-4"><StatusBadge status={o.status} /></td>
-                  <td className="py-4 text-[10px] text-gray-400">{new Date(o.createdAt).toLocaleDateString()}</td>
+            <tbody className="divide-y">
+              {(apiStats?.recentOrders || []).map(o => (
+                <tr key={o.id} className="hover:bg-muted/40 transition-colors">
+                  <td className="px-6 py-4 text-xs font-mono">#{String(o.id).slice(0, 8)}</td>
+                  <td className="px-6 py-4 text-xs">{o.customerName}</td>
+                  <td className="px-6 py-4 text-sm font-semibold">${o.totalAmount.toLocaleString()}</td>
+                  <td className="px-6 py-4"><StatusBadge status={o.status} /></td>
+                  <td className="px-6 py-4 text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}
-              {!stats?.recentOrders?.length && (
-                <tr><td colSpan={5} className="py-10 text-center text-[10px] text-gray-400 uppercase tracking-widest">No orders yet</td></tr>
+              {!apiStats?.recentOrders?.length && (
+                <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-muted-foreground">No orders yet</td></tr>
               )}
             </tbody>
           </table>
@@ -433,7 +347,7 @@ const AdminInventory: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black dark:border-white/20 pb-10">
         <div>
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Backend-Managed</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Inventory</h1>
+          <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Inventory</h1>
         </div>
         <div className="flex gap-3 flex-wrap">
           <button onClick={handleBackfillEmbeddings} disabled={backfilling} className="flex items-center gap-2 border border-black/30 dark:border-white/20 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all disabled:opacity-40">
@@ -560,7 +474,7 @@ const AdminInventory: React.FC = () => {
             <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-black hover:text-white dark:text-white dark:hover:bg-white dark:hover:text-black transition-all">
               <X size={16} />
             </button>
-            <h2 className="text-3xl font-serif-elegant font-bold uppercase tracking-tighter mb-10 dark:text-white">
+            <h2 className="text-3xl font-sans font-bold uppercase tracking-tighter mb-10 dark:text-white">
               {editingProduct ? 'Edit Product' : 'New Product'}
             </h2>
             <div className="grid grid-cols-2 gap-6 mb-8">
@@ -727,8 +641,8 @@ const AdminReviews: React.FC = () => {
     <div className="space-y-12 page-reveal">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black dark:border-white/20 pb-10">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Patron Feedback</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Reviews</h1>
+          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Customer Feedback</p>
+          <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Reviews</h1>
         </div>
         <button onClick={load} className="flex items-center gap-2 border border-black dark:border-white/30 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all self-start md:self-auto">
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -872,7 +786,7 @@ const AdminOrders: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black dark:border-white/20 pb-10">
         <div>
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Transaction Log</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Orders</h1>
+          <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Orders</h1>
         </div>
         <button onClick={load} className="flex items-center gap-2 border border-black dark:border-white/30 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all self-start md:self-auto">
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -1001,7 +915,7 @@ const AdminNegotiations: React.FC = () => {
       <div className="border-b border-black dark:border-white/20 pb-10 flex items-end justify-between">
         <div>
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Neural Feedback</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Haggle Tracker</h1>
+          <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Price Negotiations</h1>
         </div>
         <button onClick={load} className="flex items-center gap-2 border border-black dark:border-white/30 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all">
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -1032,11 +946,11 @@ const AdminNegotiations: React.FC = () => {
         {loading ? (
           [...Array(4)].map((_, i) => <div key={i} className="h-28 bg-black/5 dark:bg-white/5 animate-pulse" />)
         ) : logs.map(log => {
-          const email = log.metadata?.user_email || 'Anonymous Patron';
+          const email = log.metadata?.user_email || 'Guest';
           const message = log.metadata?.user_message || 'N/A';
           return (
             <div key={log.id} className="bg-white/40 dark:bg-white/[0.04] backdrop-blur-md border border-black/5 dark:border-white/10 p-6 flex flex-col md:flex-row gap-6 animate-in fade-in duration-500">
-              <div className="w-10 h-10 bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-serif-elegant text-lg shrink-0">
+              <div className="w-10 h-10 bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-sans text-lg shrink-0">
                 {email[0].toUpperCase()}
               </div>
               <div className="flex-1 space-y-3">
@@ -1052,7 +966,7 @@ const AdminNegotiations: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3 border-t border-black/5 dark:border-white/5">
                   <div>
-                    <p className="text-[9px] uppercase tracking-widest text-gray-400 font-black mb-1">Patron Proposes</p>
+                    <p className="text-[9px] uppercase tracking-widest text-gray-400 font-black mb-1">Customer Offered</p>
                     <p className="text-sm font-light italic dark:text-gray-300">"{message}"</p>
                   </div>
                   <div>
@@ -1088,7 +1002,7 @@ const AdminSystemSettings: React.FC = () => {
     <div className="space-y-12 page-reveal">
       <div className="border-b border-black dark:border-white/20 pb-10">
         <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Core Protocols</p>
-        <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">System Configuration</h1>
+        <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">System Configuration</h1>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
         <div className="bg-white/40 dark:bg-white/[0.04] backdrop-blur-xl border border-black/5 dark:border-white/10 p-10 space-y-8">
@@ -1108,7 +1022,7 @@ const AdminSystemSettings: React.FC = () => {
         <div className="bg-black dark:bg-white text-white dark:text-black p-10 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center gap-4 opacity-50"><Cpu size={18} /><span className="text-[10px] uppercase tracking-widest font-black">Neural Core Status</span></div>
-            <h2 className="text-3xl font-serif-elegant font-bold uppercase">Optimal Resonance</h2>
+            <h2 className="text-3xl font-sans font-bold uppercase">Similarity Threshold</h2>
             <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400 leading-relaxed">All synchronization engines operating within parameters.</p>
           </div>
         </div>
@@ -1140,7 +1054,7 @@ const AdminSimilaritySandbox: React.FC = () => {
     <div className="space-y-12 page-reveal">
       <div className="border-b border-black dark:border-white/20 pb-10">
         <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Vector Engine</p>
-        <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Similarity Sandbox</h1>
+        <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Similarity Sandbox</h1>
       </div>
       <div className="bg-white/40 dark:bg-white/[0.04] backdrop-blur-xl border border-black/5 dark:border-white/10 p-12">
         <form onSubmit={handleSearch} className="relative mb-12">
@@ -1149,7 +1063,7 @@ const AdminSimilaritySandbox: React.FC = () => {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="INPUT ARCHIVAL INTENT..."
-            className="w-full bg-transparent border-b border-black dark:border-white/30 py-6 text-xl uppercase tracking-widest outline-none font-serif-elegant placeholder:text-gray-200 dark:text-white dark:placeholder:text-white/20"
+            className="w-full bg-transparent border-b border-black dark:border-white/30 py-6 text-xl uppercase tracking-widest outline-none font-sans placeholder:text-gray-300 dark:text-white dark:placeholder:text-white/20"
           />
           <button type="submit" disabled={isSearching} className="absolute right-0 top-1/2 -translate-y-1/2 p-4 hover:opacity-50 transition-opacity disabled:opacity-20 dark:text-white">
             {isSearching ? <RefreshCw className="animate-spin" /> : <ArrowRight />}
@@ -1248,14 +1162,14 @@ const AdminConcessions: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black dark:border-white/20 pb-10">
         <div>
           <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Discount Management</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Concessions</h1>
+          <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Discount Codes</h1>
         </div>
         <div className="flex gap-3">
           <button onClick={load} className="flex items-center gap-2 border border-black dark:border-white/30 dark:text-white px-4 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all">
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-black dark:bg-white text-white dark:text-black px-6 py-3 text-[10px] uppercase tracking-[0.3em] font-black hover:opacity-80 transition-all">
-            <Plus size={12} /> New Concession
+            <Plus size={12} /> New Code
           </button>
         </div>
       </div>
@@ -1322,7 +1236,7 @@ const AdminConcessions: React.FC = () => {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
           <div className="relative bg-white dark:bg-[#111] w-full max-w-lg p-12 border border-black dark:border-white/20 animate-in zoom-in-95 duration-500">
             <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-black hover:text-white dark:text-white dark:hover:bg-white dark:hover:text-black transition-all"><X size={16} /></button>
-            <h2 className="text-3xl font-serif-elegant font-bold uppercase tracking-tighter mb-10 dark:text-white">New Concession</h2>
+            <h2 className="text-3xl font-sans font-bold uppercase tracking-tighter mb-10 dark:text-white">New Discount Code</h2>
             <div className="space-y-6">
               {[
                 { label: 'Code', key: 'code', type: 'text', placeholder: 'ARCHIVE20', transform: (v: string) => v.toUpperCase() },
@@ -1347,7 +1261,7 @@ const AdminConcessions: React.FC = () => {
               </div>
             </div>
             <button onClick={handleCreate} className="w-full bg-black dark:bg-white text-white dark:text-black py-5 text-[10px] uppercase tracking-[0.6em] font-black mt-10 active:scale-95 transition-all">
-              Archive Concession
+              Save Code
             </button>
           </div>
         </div>
@@ -1385,8 +1299,8 @@ const AdminPatrons: React.FC = () => {
     <div className="space-y-12 page-reveal">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black dark:border-white/20 pb-10">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Patron Registry</p>
-          <h1 className="text-4xl md:text-6xl font-serif-elegant font-bold uppercase tracking-tighter dark:text-white">Patrons</h1>
+          <p className="text-[10px] uppercase tracking-[0.6em] text-gray-400 font-bold mb-4">Customer Registry</p>
+          <h1 className="text-4xl md:text-6xl font-sans font-bold uppercase tracking-tighter dark:text-white">Customers</h1>
         </div>
         <div className="flex items-center gap-3 border border-black/10 dark:border-white/10 px-4 py-3 bg-white/50 dark:bg-white/[0.04]">
           <Search size={14} className="text-gray-400" />
@@ -1404,7 +1318,7 @@ const AdminPatrons: React.FC = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-black/10 dark:border-white/10">
-              {['Patron', 'Email', 'Acquisitions', 'Total Spend', 'Joined'].map(h => (
+              {['Customer', 'Email', 'Orders', 'Total Spend', 'Joined'].map(h => (
                 <th key={h} className="py-5 pr-4 text-[10px] uppercase tracking-[0.3em] font-black text-gray-400">{h}</th>
               ))}
             </tr>
@@ -1448,9 +1362,7 @@ const AdminPatrons: React.FC = () => {
 
 const Admin: React.FC = () => {
   const { user, profile, loading } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (loading) return;
@@ -1468,93 +1380,20 @@ const Admin: React.FC = () => {
 
   if (profile.role !== 'admin') return null;
 
-  const navLinks = [
-    { path: '/admin', icon: LayoutDashboard, label: 'Overview', exact: true },
-    { path: '/admin/inventory', icon: Package, label: 'Inventory' },
-    { path: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
-    { path: '/admin/reviews', icon: Star, label: 'Reviews' },
-    { path: '/admin/concessions', icon: Tag, label: 'Concessions' },
-    { path: '/admin/patrons', icon: Users, label: 'Patrons' },
-    { path: '/admin/negotiations', icon: MessageSquare, label: 'Haggles' },
-    { path: '/admin/sandbox', icon: Layers, label: 'Sandbox' },
-    { path: '/admin/settings', icon: Settings, label: 'Protocols' },
-  ];
-
-  const isActive = (path: string, exact?: boolean) =>
-    exact ? location.pathname === path : location.pathname.startsWith(path) && path !== '/admin' || location.pathname === path;
-
   return (
-    <div className="min-h-screen bg-[#FDFDFD] dark:bg-[#0A0A0A] flex overflow-hidden">
-      <aside className={`fixed inset-y-0 left-0 z-[200] bg-black text-white transition-all duration-700 flex flex-col ${isSidebarOpen ? 'w-72' : 'w-0 overflow-hidden md:w-20'}`}>
-        <div className="p-8 flex flex-col h-full justify-between overflow-y-auto">
-          <div className="space-y-12">
-            <Link to="/" className="font-serif-elegant text-xl font-bold tracking-[0.2em] hover:opacity-50 transition-opacity block">
-              {isSidebarOpen ? 'MODERNIST' : 'M'}
-            </Link>
-            <nav className="space-y-2">
-              {navLinks.map(link => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`flex items-center gap-5 px-3 py-3 transition-all group rounded-sm ${isActive(link.path, link.exact) ? 'text-white bg-white/10' : 'text-gray-500 hover:text-white'}`}
-                >
-                  <link.icon size={18} strokeWidth={1.5} className="shrink-0" />
-                  {isSidebarOpen && <span className="text-[10px] uppercase tracking-[0.3em] font-black">{link.label}</span>}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          <div className="space-y-4 mt-8">
-            <div className="p-3 border border-white/10 flex items-center gap-3">
-              <div className="w-7 h-7 bg-white/10 flex items-center justify-center text-xs font-black">
-                {(profile.first_name?.[0] || profile.email?.[0] || 'A').toUpperCase()}
-              </div>
-              {isSidebarOpen && (
-                <div className="overflow-hidden">
-                  <p className="text-[9px] font-black uppercase tracking-widest truncate">
-                    {profile.first_name ? `${profile.first_name} ${profile.last_name || ''}` : profile.email || 'Admin'}
-                  </p>
-                  <p className="text-[7px] text-gray-500 uppercase tracking-widest">Admin</p>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="w-full border border-white/20 py-2 text-[8px] uppercase tracking-[0.4em] font-black hover:bg-white hover:text-black transition-all"
-            >
-              {isSidebarOpen ? 'Collapse' : '...'}
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <main className={`flex-1 transition-all duration-700 min-h-screen ${isSidebarOpen ? 'pl-72' : 'pl-20'}`}>
-        <header className="h-20 glass dark:bg-black/50 dark:backdrop-blur-xl border-b border-black/5 dark:border-white/10 flex items-center justify-between px-8 sticky top-0 z-[190]">
-          <button className="md:hidden dark:text-white" onClick={() => setIsSidebarOpen(!isSidebarOpen)}><Menu size={20} /></button>
-          <div className="flex items-center gap-8 ml-auto">
-            <Link to="/" className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black hover:opacity-50 transition-opacity dark:text-white">
-              <span>View Storefront</span>
-              <ExternalLink size={12} />
-            </Link>
-          </div>
-        </header>
-
-        <div className="p-10 max-w-[1400px]">
-          <Routes>
-            <Route path="/" element={<AdminDashboard />} />
-            <Route path="/inventory" element={<AdminInventory />} />
-            <Route path="/orders" element={<AdminOrders />} />
-            <Route path="/reviews" element={<AdminReviews />} />
-            <Route path="/negotiations" element={<AdminNegotiations />} />
-            <Route path="/concessions" element={<AdminConcessions />} />
-            <Route path="/patrons" element={<AdminPatrons />} />
-            <Route path="/sandbox" element={<AdminSimilaritySandbox />} />
-            <Route path="/settings" element={<AdminSystemSettings />} />
-          </Routes>
-        </div>
-      </main>
-    </div>
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<AdminDashboard />} />
+        <Route path="/inventory" element={<AdminInventory />} />
+        <Route path="/orders" element={<AdminOrders />} />
+        <Route path="/reviews" element={<AdminReviews />} />
+        <Route path="/negotiations" element={<AdminNegotiations />} />
+        <Route path="/concessions" element={<AdminConcessions />} />
+        <Route path="/patrons" element={<AdminPatrons />} />
+        <Route path="/sandbox" element={<AdminSimilaritySandbox />} />
+        <Route path="/settings" element={<AdminSystemSettings />} />
+      </Routes>
+    </AppShell>
   );
 };
 

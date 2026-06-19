@@ -167,6 +167,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               console.log('Storing recovery tokens (NOT logging in)...');
               setRecoveryTokens({ access: accessToken, refresh: refreshToken });
 
+              // Navigate to the password-reset route (strip tokens from URL so
+              // Supabase doesn't auto-establish a session from the hash).
+              window.location.hash = '/password-reset';
+
               if (isMounted) {
                 setLoading(false);
               }

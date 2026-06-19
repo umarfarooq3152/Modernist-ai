@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Inter:wght@300;400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,8 +11,9 @@
 }
 
 :root {
-  --font-primary: 'Outfit', sans-serif;
+  --font-primary: 'Bodoni Moda', serif;
   --font-secondary: 'Inter', sans-serif;
+  --font-display: 'Cormorant Garamond', serif;
   --bg-color: #050505;
   --text-color: #ffffff;
   --accent-color: #ff3366;
@@ -78,14 +79,24 @@ html.lenis {
   left: 0;
   width: 100vw;
   height: 100vh;
-  /* lighter overlay for light mode, slightly stronger toward bottom for contrast */
-  background: linear-gradient(to bottom, rgba(255,255,255,0.06) 0%, rgba(5, 5, 5, 0.06) 40%, rgba(5, 5, 5, 0.48) 100%);
+  /* Strong enough overlay so white hero text is always legible */
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.38) 0%,
+    rgba(0,0,0,0.28) 40%,
+    rgba(0,0,0,0.72) 100%
+  );
   z-index: 1;
   pointer-events: none;
 }
 
 .dark .overlay {
-  background: linear-gradient(to bottom, rgba(5,5,5,0.32) 0%, rgba(5,5,5,0.8) 100%);
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.55) 0%,
+    rgba(0,0,0,0.45) 40%,
+    rgba(0,0,0,0.88) 100%
+  );
 }
 
 .content-section {
@@ -111,80 +122,59 @@ html.lenis {
   gap: 1.25rem;
 }
 
-/* Minimal, high-contrast hero text styles that adapt to light/dark */
+/* ─── Hero Typography ─────────────────────────────────────── */
+/* All hero text stays white — the overlay guarantees contrast */
+
 .hero-eyebrow {
-  font-size: 0.6rem;
-  letter-spacing: 0.45em;
-  text-transform: uppercase;
-  font-weight: 600;
   font-family: var(--font-secondary);
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.65);
   margin: 0;
-  color: rgba(0,0,0,0.9); /* default: light-mode (black on white) */
 }
-.dark .hero-eyebrow {
-  color: rgba(255,255,255,0.92);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+
+/* The big display wordmark — Bodoni Moda, editorial size */
+.hero-display {
+  font-family: var(--font-primary);
+  font-size: clamp(3rem, 10vw, 8rem);
+  font-weight: 400;
+  line-height: 0.88;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: 0 4px 40px rgba(0,0,0,0.4);
+  margin: 0;
 }
 
 .hero-wordmark {
-  font-size: clamp(0.9rem, 2vw, 1.1rem);
-  font-weight: 600;
+  font-family: var(--font-secondary);
+  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  font-weight: 500;
   letter-spacing: 0.55em;
   text-transform: uppercase;
-  font-family: var(--font-primary);
+  color: rgba(255,255,255,0.55);
   margin: 0;
-  color: rgba(0,0,0,0.96);
-}
-.dark .hero-wordmark {
-  color: rgba(255,255,255,0.98);
-  text-shadow: 0 2px 8px rgba(0,0,0,0.55);
 }
 
 .hero-divider {
-  width: 32px;
+  width: 40px;
   height: 1px;
-  background: rgba(0,0,0,0.12);
-}
-.dark .hero-divider {
-  background: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.25);
+  margin: 0 auto;
 }
 
 .hero-tagline {
-  font-size: 0.7rem;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  font-weight: 400;
-  font-family: var(--font-secondary);
-  max-width: 280px;
-  text-align: center;
-  line-height: 1.8;
-  margin: 0;
-  color: rgba(0,0,0,0.64);
-}
-.dark .hero-tagline {
-  color: rgba(255,255,255,0.38);
-  text-shadow: 0 1px 3px rgba(0,0,0,0.45);
-}
-
-.hero-title {
-  font-size: clamp(3rem, 10vw, 8rem);
-  font-weight: 900;
-  line-height: 1.1;
-  margin-bottom: 1rem;
-  background: linear-gradient(to right, #fff, #a3a3a3);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-transform: uppercase;
-  letter-spacing: -0.02em;
-}
-
-.hero-subtitle {
-  font-size: clamp(1rem, 3vw, 1.5rem);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(0.9rem, 2vw, 1.15rem);
   font-weight: 300;
-  color: #a3a3a3;
-  max-width: 600px;
-  margin-bottom: 2rem;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.72);
+  text-align: center;
+  margin: 0;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.35);
 }
 
 .scroll-indicator {
@@ -251,6 +241,14 @@ html.lenis {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -277,6 +275,14 @@ html.lenis {
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
 
@@ -427,6 +433,12 @@ html.lenis {
 
 .surcharge-flash {
   animation: surchargeFlash 0.8s ease-in-out;
+}
+
+/* Marquee ticker */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
 }
 
 /* Hero Slider Animations */
