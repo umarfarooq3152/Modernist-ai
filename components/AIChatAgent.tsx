@@ -1,12 +1,12 @@
 /// <reference types="../vite-env.d.ts" />
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Bot, ChevronRight, Percent, Camera, Wand2, RefreshCw, Check, Sparkles, PlusCircle, Activity, AlertCircle, Star, ShoppingBag, ExternalLink, ArrowUpDown, Tag, Search } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import Groq from 'groq-sdk';
 import { Product } from '../types';
-import { getStripe } from '../lib/stripe';
 import { CLERK_SYSTEM_PROMPT } from '../lib/clerkSystemPrompt';
 import { semanticSearch as serverSemanticSearch } from '../lib/ragApi';
 
@@ -231,6 +231,7 @@ const groqClient = new Groq({
 // ══════════════════════════════════════════════════════════════
 
 const AIChatAgent: React.FC = () => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -2213,27 +2214,10 @@ CURRENT STATE:
     }
   };
 
-  const handleInitiateStripeCheckout = async () => {
+  const handleInitiateStripeCheckout = () => {
     if (cart.length === 0) return;
-    setIsRedirecting(true);
-    try {
-      // Mock checkout for demo purposes - replace with actual Stripe implementation
-      // In a real app, you would call your API here:
-      // const response = await fetch('/api/checkout', { ... });
-      // const { sessionId } = await response.json();
-      // const stripe = getStripe();
-      // await stripe.redirectToCheckout({ sessionId });
-
-      // For demo, just simulate checkout
-      setTimeout(() => {
-        alert(`Mock checkout completed! Total: $${cartTotal}`);
-        setIsRedirecting(false);
-      }, 2000);
-    } catch (err) {
-      console.error(err);
-      setIsRedirecting(false);
-      addToast(err.message || 'Checkout failed. Please try again.', 'error');
-    }
+    setIsOpen(false);
+    navigate('/checkout');
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -2257,8 +2241,8 @@ CURRENT STATE:
     const topReview = product.reviews?.[0];
 
     return (
-      <div className="group bg-white dark:bg-gray-900 border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 transition-all duration-300 overflow-hidden flex-shrink-0 w-[200px]">
-        <div className="relative aspect-square overflow-hidden bg-gray-50 dark:bg-gray-800">
+      <div className="group bg-white dark:bg-gray-900 border border-black/10 dark:border-white/10 hover:border-black/30 dark:hover:border-white/30 transition-all duration-300 overflow-hidden flex-shrink-0 w-[180px]">
+        <div className="relative h-[150px] overflow-hidden bg-gray-50 dark:bg-gray-800">
           <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy" />
           <div className="absolute top-2 right-2 bg-black/90 dark:bg-white/90 text-white dark:text-black text-[10px] font-black uppercase tracking-wider px-2 py-1">
             ${product.price}
@@ -2390,7 +2374,7 @@ CURRENT STATE:
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar p-6 md:p-10 space-y-6 pb-24">
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-6 md:p-10 space-y-6">
             {messages.length === 0 && (
               <div className="h-full flex flex-col justify-center max-w-[340px] py-12">
                 <h3 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight text-black dark:text-white">
