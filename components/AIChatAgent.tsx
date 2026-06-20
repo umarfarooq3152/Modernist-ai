@@ -234,7 +234,12 @@ const AIChatAgent: React.FC = () => {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('clerk_messages');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [loading, setLoading] = useState(false);
   const [isRetrieving, setIsRetrieving] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -428,6 +433,14 @@ const AIChatAgent: React.FC = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, loading, isProcessingTryOn, isRetrieving]);
+
+  useEffect(() => {
+    try {
+      // Keep only last 40 messages to avoid bloating localStorage
+      const toSave = messages.slice(-40).map(m => ({ role: m.role, text: m.text }));
+      localStorage.setItem('clerk_messages', JSON.stringify(toSave));
+    } catch { /* storage quota exceeded — ignore */ }
+  }, [messages]);
 
   // ══════════════════════════════════════════════════════════════
   // PERFECT PAIR RECOMMENDATIONS
@@ -1156,7 +1169,7 @@ const AIChatAgent: React.FC = () => {
 
     // ── HELP / WHAT CAN YOU DO ──
     if (/\b(help|what can you do|how does this work|what are you|who are you|commands|features)\b/i.test(m)) {
-      setMessages(prev => [...prev, { role: 'assistant', text: `I'm The Clerk — part stylist, part negotiator, full-time fashion enabler. Here's my repertoire:\n\n🔍 **Search**: "Show me summer outfits" or "leather under $500" → products appear instantly, no clicking needed\n🛒 **Shop**: "Add the cashmere sweater" or "I'll take 2 of those" → straight to your bag\n💰 **Haggle**: "Can I get a birthday discount?" → I'll see what I can do (just don't be rude, or prices go UP)\n🎨 **Filter**: "Sort by cheapest" or "Only outerwear" → the whole website changes in real-time\n💳 **Checkout**: "Buy now" → I'll handle the rest\n💡 **Style**: "What goes with this?" → honest pairing suggestions\n\nI also have opinions. Many opinions. Ask at your own risk.` }]);
+      setMessages(prev => [...prev, { role: 'assistant', text: `I'm The Clerk — part stylist, part negotiator, full-time fashion enabler.\n\nSearch: "Show me summer outfits" or "leather under $500" — products appear instantly.\nShop: "Add the cashmere sweater" or "I'll take 2 of those" — straight to your bag.\nHaggle: "Can I get a birthday discount?" — I'll see what I can do. Just don't be rude, or prices go up.\nFilter: "Sort by cheapest" or "Only outerwear" — the whole site changes in real-time.\nCheckout: "Buy now" — I'll take you there.\nStyle: "What goes with this?" — honest pairing suggestions, no flattery.\n\nI also have opinions. Many opinions. Ask at your own risk.` }]);
       return { handled: true, intent: 'help' };
     }
 
@@ -2374,7 +2387,7 @@ CURRENT STATE:
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-6 md:p-10 space-y-6">
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-scroll no-scrollbar p-6 md:p-10 space-y-6">
             {messages.length === 0 && (
               <div className="h-full flex flex-col justify-center max-w-[340px] py-12">
                 <h3 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight text-black dark:text-white">
