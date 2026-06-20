@@ -1068,6 +1068,12 @@ const AIChatAgent: React.FC = () => {
     });
   };
 
+  const scrollToProducts = () => {
+    setTimeout(() => {
+      document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+  };
+
   const NON_PRODUCT_DEFLECTIONS = [
     "I specialise in jewellery, not that. What piece can I help you find?",
     "Not in the catalogue. Try asking about rings, watches, or diamonds instead.",
@@ -1306,6 +1312,7 @@ const AIChatAgent: React.FC = () => {
         filterByCategory(cat);
         const filtered = allProducts.filter(p => p.category === cat);
         updateProductFilter({ category: cat, productIds: filtered.map(p => p.id) });
+        scrollToProducts();
 
         const categoryComments: Record<string, string> = {
           'Watches': `Grid filtered to Watches only. ${filtered.length} timepieces now showing.`,
@@ -1328,12 +1335,29 @@ const AIChatAgent: React.FC = () => {
       if (allProducts && allProducts.length > 0) {
         const sample = [...allProducts].sort(() => Math.random() - 0.5);
         updateProductFilter({ query: '', productIds: sample.map(p => p.id) });
+        scrollToProducts();
         setMessages(prev => [...prev, {
           role: 'assistant',
           text: `Filters cleared. All ${allProducts.length} pieces now showing in the grid.`
         }]);
       }
       return { handled: true, intent: 'show_all' };
+    }
+
+    // ── ADD ALL / EVERYTHING ──
+    if (/\b(add (all|every(thing)?|the (whole|entire) (collection|catalogue|store))|everything (to|in(to)?) (cart|bag))\b/i.test(m) && !isInActiveNegotiation) {
+      const productsToAdd = allProducts.filter(p => p.stock_quantity > 0);
+      if (productsToAdd.length === 0) {
+        setMessages(prev => [...prev, { role: 'assistant', text: "Nothing in stock to add. Search for something specific first." }]);
+      } else {
+        productsToAdd.forEach(p => addToCartWithQuantity(p.id, 1));
+        openCart();
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          text: `Alright. All ${productsToAdd.length} pieces are in your bag. Decisive. I respect it.`
+        }]);
+      }
+      return { handled: true, intent: 'add_all' };
     }
 
     // ── ADD TO CART (by name) ──
@@ -1905,6 +1929,7 @@ CURRENT STATE:
             }]);
           } else {
             updateProductFilter({ query: args.query, category: args.category, productIds: products.map((p: Product) => p.id) });
+            scrollToProducts();
             const searchResponses = [
               `Found ${products.length} pieces. The grid is now updated — check below:`,
               `Curated ${products.length} results (${metadata.method} search). See the grid:`,
@@ -1974,6 +1999,7 @@ CURRENT STATE:
             updateProductFilter({ query: args.query || args.filter_query });
             message = `Grid filtered: ${args.query || args.filter_query}.`;
           }
+          scrollToProducts();
           setMessages(prev => [...prev, { role: 'assistant', text: message }]);
           didShowSomething = true;
         } else if (fnName === 'generate_coupon') {
