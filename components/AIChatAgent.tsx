@@ -1068,8 +1068,26 @@ const AIChatAgent: React.FC = () => {
     });
   };
 
+  const NON_PRODUCT_DEFLECTIONS = [
+    "I specialise in jewellery, not that. What piece can I help you find?",
+    "Not in the catalogue. Try asking about rings, watches, or diamonds instead.",
+    "The archive doesn't carry that. Is there a piece you're actually looking for?",
+    "I deal in precious metals and certified stones, not that. Shall we look at something worthwhile?",
+  ];
+
   const handleLocalIntent = async (msg: string): Promise<IntentResult> => {
     const m = msg.toLowerCase().trim();
+
+    // ── NON-PRODUCT / NSFW FILTER ──
+    // Catch queries that are clearly not product searches before hitting Groq
+    const NSFW_PATTERN = /\b(pussy|dick|cock|ass(?:hole)?|fuck|shit|bitch|cunt|boob|tit|nude|naked|sex(?:ual)?|porn|xxx)\b/i;
+    if (NSFW_PATTERN.test(m)) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        text: NON_PRODUCT_DEFLECTIONS[Math.floor(Math.random() * NON_PRODUCT_DEFLECTIONS.length)]
+      }]);
+      return { handled: true, intent: 'nsfw_deflect' };
+    }
 
     // ═══ NEGOTIATION AWARENESS ═══
     // During active negotiation (attempts > 0), skip most local processing
@@ -2089,7 +2107,11 @@ CURRENT STATE:
       // Text response from Groq (show it before products if there are tool calls)
       // BUT: Don't override negotiation block messages!
       if (message?.content && !negotiationBlocked) {
-        finalClerkResponse = message.content;
+        // Strip any leaked XML-style function calls the model put in its text output
+        finalClerkResponse = message.content
+          .replace(/<function=[^>]*>[\s\S]*?<\/function>/g, '')
+          .replace(/<function=[^{]*\{[\s\S]*?\}/g, '')
+          .trim();
 
         // SAFETY CHECK: If AI mentions discounts in text without calling tool, block it
         const mentionsDiscount = /\b(\d+%|\d+\s*percent|percent.*off|discount.*granted|you.*got.*discount|here.*your.*discount|applied.*discount|giving.*you)/i.test(finalClerkResponse);
