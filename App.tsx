@@ -7,9 +7,14 @@ import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import CartSidebar from './components/CartSidebar';
-const AIChatAgent = React.lazy(() => import('./components/AIChatAgent'));
 import AuthModal from './components/AuthModal';
 import HeroSection from './components/HeroSection';
+import { ProgressiveBlur } from './components/ui/progressive-blur';
+import { motion } from 'framer-motion';
+import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
+import GlobalLoader from './components/GlobalLoader';
+
+const AIChatAgent = React.lazy(() => import('./components/AIChatAgent'));
 const ProductDetail = React.lazy(() => import('./pages/ProductDetail'));
 const Checkout = React.lazy(() => import('./pages/Checkout'));
 const OrderHistory = React.lazy(() => import('./pages/OrderHistory'));
@@ -18,10 +23,6 @@ const Admin = React.lazy(() => import('./pages/Admin'));
 const Search = React.lazy(() => import('./pages/Search'));
 const Wishlist = React.lazy(() => import('./pages/Wishlist'));
 const PasswordReset = React.lazy(() => import('./pages/PasswordReset'));
-import { ProgressiveBlur } from './components/ui/progressive-blur';
-import { motion } from 'framer-motion';
-import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
-import GlobalLoader from './components/GlobalLoader';
 
 // Error Boundary to prevent blank screens
 // @ts-ignore — React class component type workaround
