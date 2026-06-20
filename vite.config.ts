@@ -24,15 +24,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     build: {
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'vendor-supabase': ['@supabase/supabase-js'],
-            'vendor-framer': ['framer-motion'],
-            'vendor-groq': ['groq-sdk'],
-          }
-        }
-      }
+      rollupOptions: {}
     }
   };
 });
