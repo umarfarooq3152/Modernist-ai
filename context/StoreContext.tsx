@@ -324,6 +324,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return Math.max(0, Math.round(total));
   }, [cartSubtotal, synergyDiscount, state.negotiatedDiscount]);
 
+  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
+
+  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+
   const addToCart = useCallback((product: Product) => {
     if (product.stock_quantity === 0) { addToast('This piece is sold out', 'error'); return; }
     dispatch({ type: 'ADD_TO_CART', payload: product });
@@ -361,14 +369,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const setMood = useCallback((mood: UserMood) => dispatch({ type: 'SET_MOOD', payload: mood }), []);
   const clearCart = useCallback(() => dispatch({ type: 'CLEAR_CART' }), []);
   const clearLastAdded = useCallback(() => dispatch({ type: 'CLEAR_LAST_ADDED' }), []);
-
-  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Date.now().toString();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
   const resetArchive = useCallback(() => {
     setActiveVibe(null);
     dispatch({ type: 'FILTER_BY_CATEGORY', payload: 'All' });
