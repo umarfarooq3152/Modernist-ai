@@ -206,8 +206,8 @@ function reciprocalRankFusion(
 
 const MODEL_FALLBACK_CHAIN = [
   'llama-3.3-70b-versatile',
+  'llama-3.1-70b-versatile',
   'llama-3.1-8b-instant',
-  'mixtral-8x7b-32768',
 ];
 
 const MAX_RETRIES = 2;
@@ -734,9 +734,10 @@ const AIChatAgent: React.FC = () => {
         } catch (error: any) {
           const is404 = error?.status === 404 || error.message?.includes('not found');
           const isQuota = error?.status === 429 || error.message?.includes('rate_limit');
+          const isToolFail = error?.status === 400 && error.message?.includes('tool_use_failed');
 
-          if (is404) {
-            console.warn(`Groq model ${model} not available, skipping.`);
+          if (is404 || isToolFail) {
+            console.warn(`Groq model ${model} ${isToolFail ? 'failed tool generation' : 'not available'}, trying next.`);
             break;
           }
           if (isQuota && attempt < MAX_RETRIES - 1) {
