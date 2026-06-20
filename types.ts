@@ -7,6 +7,8 @@ export interface Review {
   date: string;
   text: string;
   user_id?: string;
+  verified_purchase?: boolean;
+  updated_at?: string;
   product?: {
     name: string;
     image_url: string;

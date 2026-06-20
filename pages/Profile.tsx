@@ -48,10 +48,9 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     // Redirect to home if no user and auth is done loading
-    if (!authLoading && !user) { 
-      console.log('No user, redirecting to home');
-      navigate('/'); 
-      return; 
+    if (!authLoading && !user) {
+      navigate('/');
+      return;
     }
     
     let isMounted = true;

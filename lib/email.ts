@@ -181,7 +181,6 @@ export async function sendOrderConfirmationEmail(
       });
 
       if (response.ok) {
-        console.log('✅ Order confirmation email sent successfully via EmailJS');
         return true;
       } else {
         const errorData = await response.text();
@@ -220,7 +219,6 @@ export async function sendOrderConfirmationEmail(
 
       const result = await response.json();
       if (result.success) {
-        console.log('✅ Order confirmation email sent successfully');
         return true;
       } else {
         console.error('❌ Failed to send email:', result);
@@ -228,12 +226,7 @@ export async function sendOrderConfirmationEmail(
       }
     }
 
-    // If no email service is configured, log the email content
-    console.warn('⚠️ No email service configured. Email would be sent to:', customerEmail);
-    console.log('Order ID:', orderId);
-    console.log('Items:', items.length);
-    console.log('Total:', totalAmount);
-    
+    // If no email service is configured, skip silently (dev/demo mode)
     return true; // Return true to not block the checkout flow
 
   } catch (error) {

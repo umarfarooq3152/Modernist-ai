@@ -1,29 +1,32 @@
 
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Plus, 
-  ShieldCheck, 
-  Truck, 
-  RefreshCw, 
-  ChevronLeft, 
-  ChevronRight, 
-  Maximize2, 
-  Star, 
-  Sparkles, 
-  Zap, 
+import {
+  ArrowLeft,
+  Plus,
+  ShieldCheck,
+  Truck,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Star,
+  Sparkles,
+  Zap,
   Layers,
   Wand2,
   Camera,
   Info,
-  Activity
+  Activity,
+  Lock,
+  Edit2,
+  ChevronDown,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import ReviewSubmission from '../components/ReviewSubmission';
+import { Review } from '../types';
 import Groq from 'groq-sdk';
 import { similarProducts, type RAGResult } from '../lib/ragApi';
 
@@ -74,6 +77,12 @@ const ProductDetail: React.FC = () => {
   const [similarItems, setSimilarItems] = useState<RAGResult[]>([]);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [hasPurchased, setHasPurchased] = useState(false);
+  const [userExistingReview, setUserExistingReview] = useState<Review | null>(null);
+  const [reviewSort, setReviewSort] = useState<'newest' | 'oldest' | 'highest' | 'lowest'>('newest');
+  const [reviewPage, setReviewPage] = useState(1);
+
+  const REVIEWS_PER_PAGE = 6;
   const containerRef = useRef<HTMLDivElement>(null);
 
   const fetchProductDetails = useCallback(async () => {
@@ -105,7 +114,21 @@ const ProductDetail: React.FC = () => {
     setSimilarItems([]);
     setSelectedSize(null);
     setSelectedColor(null);
+    setReviewPage(1);
   }, [fetchProductDetails]);
+
+  // Check purchase status and find existing review when product/user changes
+  useEffect(() => {
+    if (!user || !product) {
+      setHasPurchased(false);
+      setUserExistingReview(null);
+      return;
+    }
+    const existing = product.reviews?.find(r => r.user_id === user.id) ?? null;
+    setUserExistingReview(existing);
+    void supabase.rpc('has_purchased_product', { p_product_id: product.id })
+      .then(({ data }) => setHasPurchased(data === true));
+  }, [user?.id, product?.id, product?.reviews]);
 
   // Page view tracking — fire-and-forget, anon insert
   useEffect(() => {
@@ -195,6 +218,22 @@ const ProductDetail: React.FC = () => {
     const targetCat = complements[product.category] || 'Basics';
     return allProducts.find(p => p.category === targetCat && p.id !== product.id);
   }, [product, allProducts]);
+
+  const sortedReviews = useMemo(() => {
+    if (!product?.reviews) return [];
+    return [...product.reviews].sort((a, b) => {
+      if (reviewSort === 'newest') return new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (reviewSort === 'oldest') return new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (reviewSort === 'highest') return b.rating - a.rating;
+      if (reviewSort === 'lowest') return a.rating - b.rating;
+      return 0;
+    });
+  }, [product?.reviews, reviewSort]);
+
+  const displayedReviews = useMemo(
+    () => sortedReviews.slice(0, reviewPage * REVIEWS_PER_PAGE),
+    [sortedReviews, reviewPage, REVIEWS_PER_PAGE]
+  );
 
   const galleryImages = useMemo(() => {
     if (!product) return [];
@@ -393,14 +432,15 @@ const ProductDetail: React.FC = () => {
                   <p className="text-[10px] font-black text-white pt-2">${Math.round(synergyPiece.price * 0.85).toLocaleString()} <span className="text-gray-600 line-through ml-2">${synergyPiece.price}</span></p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   addToCart(product);
                   addToCart(synergyPiece);
                 }}
-                className="w-full bg-white text-black py-4 text-[10px] uppercase tracking-[0.3em] font-black hover:opacity-80 transition-opacity relative z-10"
+                disabled={product.stock_quantity === 0 || synergyPiece.stock_quantity === 0}
+                className="w-full bg-white text-black py-4 text-[10px] uppercase tracking-[0.3em] font-black hover:opacity-80 transition-opacity relative z-10 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Acquire Pair Synergy
+                {product.stock_quantity === 0 || synergyPiece.stock_quantity === 0 ? 'Unavailable' : 'Acquire Pair Synergy'}
               </button>
             </div>
           )}
@@ -457,8 +497,25 @@ const ProductDetail: React.FC = () => {
             </div>
           )}
 
+          {/* Low stock warning */}
+          {product.stock_quantity != null && product.stock_quantity > 0 &&
+            product.low_stock_threshold != null && product.stock_quantity <= product.low_stock_threshold && (
+            <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.3em] font-black text-amber-600 border border-amber-200 px-4 py-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Only {product.stock_quantity} remaining
+            </div>
+          )}
+
           <div className="space-y-4 pt-6 border-t border-black/10">
             <div className="grid grid-cols-2 gap-4">
+              {product.stock_quantity === 0 ? (
+                <button
+                  disabled
+                  className="bg-gray-100 text-gray-400 py-6 text-[11px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border border-gray-200 cursor-not-allowed"
+                >
+                  <span>Sold Out</span>
+                </button>
+              ) : (
                <button
                   onClick={() => {
                     const sizes = product.variants?.sizes || [];
@@ -472,6 +529,7 @@ const ProductDetail: React.FC = () => {
                   <Plus size={18} />
                   <span>Add to Bag</span>
                 </button>
+              )}
                 <button 
                   onClick={handleMirrorProjection}
                   className="bg-white text-black py-6 text-[11px] uppercase tracking-[0.4em] font-black flex items-center justify-center space-x-3 border border-black hover:bg-black hover:text-white transition-all active:scale-95"
@@ -579,37 +637,118 @@ const ProductDetail: React.FC = () => {
                 Documented reviews from verified archival patrons. Every silhouette is held to our permanent standard.
               </p>
             </div>
-            <button 
+            <button
               onClick={() => {
                 if (!user) {
                   addToast('Please sign in to document your experience', 'info');
                   return;
                 }
+                if (!hasPurchased) {
+                  addToast('Purchase this piece to unlock the review archive.', 'info');
+                  return;
+                }
                 setIsReviewModalOpen(true);
               }}
-              className="w-full py-5 border border-black text-[10px] uppercase tracking-[0.4em] font-black hover:bg-black hover:text-white transition-all"
+              className={`w-full py-5 border text-[10px] uppercase tracking-[0.4em] font-black transition-all flex items-center justify-center gap-2 ${
+                user && !hasPurchased
+                  ? 'border-black/15 text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                  : 'border-black hover:bg-black hover:text-white'
+              }`}
             >
-              Document your experience
+              {user && !hasPurchased && <Lock size={12} />}
+              {user && hasPurchased && userExistingReview && <Edit2 size={12} />}
+              {!user
+                ? 'Sign in to document'
+                : !hasPurchased
+                ? 'Purchase to document'
+                : userExistingReview
+                ? 'Amend your resonance'
+                : 'Document your experience'}
             </button>
           </div>
 
-          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-10">
-            {product.reviews && product.reviews.length > 0 ? (
-              product.reviews.map((review) => (
-                <div key={review.id} className="bg-gray-50/50 p-10 space-y-8 animate-in slide-in-from-bottom-4 transition-all hover:bg-white hover:shadow-2xl hover:border-black border border-transparent">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-4">
-                      <div className="flex space-x-1">{[...Array(5)].map((_, i) => (<Star key={i} size={10} fill={i < review.rating ? "black" : "none"} strokeWidth={1} className={i < review.rating ? "text-black" : "text-gray-200"} />))}</div>
-                      <h4 className="text-[10px] font-black uppercase tracking-widest">{review.author}</h4>
-                    </div>
-                    <span className="text-[8px] uppercase tracking-widest text-gray-300 font-black">{review.date}</span>
-                  </div>
-                  <p className="font-clerk italic text-xl text-gray-700 leading-relaxed">"{review.text}"</p>
+          <div className="lg:col-span-8 space-y-8">
+            {/* Sort controls */}
+            {product.reviews && product.reviews.length > 1 && (
+              <div className="flex items-center gap-4 pb-6 border-b border-black/5">
+                <span className="text-[9px] uppercase tracking-[0.3em] font-black text-gray-400">Sort</span>
+                <div className="flex flex-wrap gap-2">
+                  {(['newest', 'oldest', 'highest', 'lowest'] as const).map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => { setReviewSort(opt); setReviewPage(1); }}
+                      className={`text-[8px] uppercase tracking-[0.25em] font-black px-3 py-1.5 border transition-all ${
+                        reviewSort === opt
+                          ? 'bg-black text-white border-black'
+                          : 'border-black/10 text-gray-400 hover:border-black hover:text-black'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
                 </div>
-              ))
-            ) : (
-              <div className="col-span-2 py-24 text-center border border-dashed border-black/10">
-                <p className="text-[10px] uppercase tracking-[0.4em] text-gray-300 font-black">Zero documented testimonials for this silhouette.</p>
+              </div>
+            )}
+
+            {/* Reviews grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+              {displayedReviews.length > 0 ? (
+                displayedReviews.map((review) => {
+                  const isOwn = user?.id === review.user_id;
+                  return (
+                    <div key={review.id} className={`bg-gray-50/50 p-10 space-y-6 animate-in slide-in-from-bottom-4 transition-all hover:bg-white hover:shadow-2xl hover:border-black border ${isOwn ? 'border-black/20' : 'border-transparent'}`}>
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-3">
+                          <div className="flex space-x-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} size={10} fill={i < review.rating ? 'black' : 'none'} strokeWidth={1} className={i < review.rating ? 'text-black' : 'text-gray-200'} />
+                            ))}
+                          </div>
+                          <h4 className="text-[10px] font-black uppercase tracking-widest">{review.author}</h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {review.verified_purchase && (
+                              <span className="text-[7px] uppercase tracking-[0.3em] font-black text-green-600 border border-green-200 px-2 py-0.5">Verified Purchase</span>
+                            )}
+                            {isOwn && (
+                              <span className="text-[7px] uppercase tracking-[0.3em] font-black text-gray-400 border border-black/10 px-2 py-0.5">Your Review</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="text-[8px] uppercase tracking-widest text-gray-300 font-black">
+                            {new Date(review.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                          </span>
+                          {isOwn && (
+                            <button
+                              onClick={() => setIsReviewModalOpen(true)}
+                              className="text-[8px] uppercase tracking-widest font-black text-gray-400 hover:text-black underline underline-offset-2"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="font-clerk italic text-xl text-gray-700 leading-relaxed">"{review.text}"</p>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="col-span-2 py-24 text-center border border-dashed border-black/10">
+                  <p className="text-[10px] uppercase tracking-[0.4em] text-gray-300 font-black">Zero documented testimonials for this silhouette.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Load more */}
+            {sortedReviews.length > displayedReviews.length && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={() => setReviewPage(p => p + 1)}
+                  className="flex items-center gap-2 mx-auto text-[9px] uppercase tracking-[0.3em] font-black border border-black/10 px-8 py-4 hover:border-black transition-all"
+                >
+                  <ChevronDown size={14} />
+                  Load more ({sortedReviews.length - displayedReviews.length} remaining)
+                </button>
               </div>
             )}
           </div>
@@ -621,6 +760,7 @@ const ProductDetail: React.FC = () => {
         <ReviewSubmission
           productId={product.id}
           productName={product.name}
+          existingReview={userExistingReview ?? undefined}
           onClose={() => setIsReviewModalOpen(false)}
           onSuccess={() => fetchProductDetails()}
         />

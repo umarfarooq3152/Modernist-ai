@@ -268,7 +268,7 @@ const AIChatAgent: React.FC = () => {
     allProducts, cart, addToCartWithQuantity, openCart, lastAddedProduct, clearLastAdded,
     updateProductFilter, applyNegotiatedDiscount, negotiatedDiscount, cartTotal, cartSubtotal, addToast,
     logClerkInteraction, setSortOrder, removeFromCart, filterByCategory, toggleTheme, theme,
-    lockCart, unlockCart, isCartLocked
+    lockCart, unlockCart, isCartLocked, isInitialLoading
   } = useStore();
 
   const { user } = useAuth();
@@ -315,13 +315,10 @@ const AIChatAgent: React.FC = () => {
     const { category, minPrice, maxPrice, maxResults = 10 } = options;
 
     try {
-      console.log(`[HYBRID SEARCH] Query: "${query}"`);
-
       // STAGE 1: BM25 Keyword Search (fast exact matching)
       let keywordResults: { id: string; score: number }[] = [];
       if (bm25Index) {
         keywordResults = bm25Index.search(query, maxResults * 2);
-        console.log(`[BM25] Found ${keywordResults.length} keyword matches`);
       }
 
       // STAGE 2: Server-side vector semantic search via rag-search edge function.
@@ -335,7 +332,6 @@ const AIChatAgent: React.FC = () => {
           explain: false,
         });
         vectorResults = ragRes.results.map(r => ({ id: r.id, score: r.similarity }));
-        console.log(`[VECTOR/SERVER] Found ${vectorResults.length} semantic matches`);
       } catch (embErr) {
         console.warn('[VECTOR/SERVER] Server semantic search failed, using keyword only:', embErr);
       }
@@ -347,15 +343,12 @@ const AIChatAgent: React.FC = () => {
       if (vectorResults.length > 0 && keywordResults.length > 0) {
         fusedResults = reciprocalRankFusion(vectorResults, keywordResults);
         method = 'hybrid';
-        console.log(`[RRF] Fused ${fusedResults.length} results (HYBRID)`);
       } else if (vectorResults.length > 0) {
         fusedResults = vectorResults;
         method = 'vector';
-        console.log(`[RRF] Using ${fusedResults.length} vector results only`);
       } else if (keywordResults.length > 0) {
         fusedResults = keywordResults;
         method = 'keyword';
-        console.log(`[RRF] Using ${fusedResults.length} keyword results only`);
       } else {
         // FALLBACK: Simple text matching (emergency mode)
         console.warn('[FALLBACK] Using emergency text search');
@@ -390,8 +383,6 @@ const AIChatAgent: React.FC = () => {
       // STAGE 5: Return top results
       const finalProducts = filteredProducts.slice(0, maxResults);
       const searchTime = Date.now() - startTime;
-
-      console.log(`[HYBRID SEARCH] ✓ Returned ${finalProducts.length} products in ${searchTime}ms (${method})`);
 
       return {
         products: finalProducts,
@@ -634,13 +625,6 @@ const AIChatAgent: React.FC = () => {
     // Max discount percentage that keeps us above bottom_price
     const maxDiscountAmount = total - minTotal;
     const maxDiscountPercent = Math.floor((maxDiscountAmount / total) * 100);
-
-    console.log('[HAGGLE] Max discount calc:', {
-      total,
-      minTotal,
-      maxDiscountAmount,
-      maxDiscountPercent
-    });
 
     return Math.max(0, Math.min(maxDiscountPercent, 30)); // Cap at 30% for safety
   };
@@ -1085,8 +1069,6 @@ const AIChatAgent: React.FC = () => {
     // 🚨 DISCOUNT REQUEST HANDLING - Always catch these locally to control negotiation flow
     const isDiscountRequest = /\b(discount|deal|coupon|cheaper|price.*(off|down|lower|break|reduction)|birthday|student|military|first.*time|loyal|bulk|celebrate|special.*occasion|\d+%|\d+\s*percent)\b/i.test(m);
     if (isDiscountRequest) {
-      console.log('[LOCAL_INTENT] 💰 Discount request detected:', m);
-
       if (cart.length === 0) {
         setMessages(prev => [...prev, { role: 'assistant', text: "Your bag is empty — add some pieces first and then we can talk numbers. I don't negotiate in hypotheticals." }]);
         return { handled: true, intent: 'discount_empty_cart' };
@@ -1115,7 +1097,6 @@ const AIChatAgent: React.FC = () => {
       }
 
       // Start negotiation flow - this is the FIRST discount request
-      console.log('[LOCAL_INTENT] Starting negotiation flow - first discount request');
       const currentAttempts = negotiationAttempts + 1;
       setNegotiationAttempts(currentAttempts);
 
@@ -1134,8 +1115,6 @@ const AIChatAgent: React.FC = () => {
     }
 
     if (isInActiveNegotiation) {
-      console.log('[LOCAL_INTENT] Active negotiation detected, limiting local processing');
-
       // Still process critical safety patterns during negotiation
       const msgRudeness = detectRudeness(m);
       if (msgRudeness >= 3) {
@@ -1495,9 +1474,16 @@ const AIChatAgent: React.FC = () => {
     // Only do local search if there's clear shopping intent
     if (hasSearchIntent || hasPriceFilter || hasRatingFilter || hasSortIntent || (hasProductKeywords && m.split(/\s+/).length >= 1) || hasOccasion) {
       if (!allProducts || allProducts.length === 0) {
+        if (isInitialLoading) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            text: "Give me a moment — I'm loading the catalogue. Send that again in a second."
+          }]);
+          return { handled: true, intent: 'search_loading' };
+        }
         setMessages(prev => [...prev, {
           role: 'assistant',
-          text: "Our jewelry collection is currently being updated. Please check back soon for our latest pieces."
+          text: "Our collection isn't available right now. Try refreshing the page."
         }]);
         return { handled: true, intent: 'search_no_inventory' };
       }
@@ -1787,17 +1773,12 @@ const AIChatAgent: React.FC = () => {
     // ═══ OLD NEGOTIATION TRACKING (KEEP FOR BACKWARD COMPATIBILITY) ═══
     const currentNegotiationAttempts = isDiscountRequest ? negotiationAttempts + 1 : negotiationAttempts;
     if (isDiscountRequest) {
-      console.log('[NEGOTIATION] Discount request detected in message:', userMessage);
-      console.log('[NEGOTIATION] negotiationAttempts:', negotiationAttempts, '→', currentNegotiationAttempts);
       setNegotiationAttempts(currentNegotiationAttempts);
-    } else {
-      console.log('[NEGOTIATION] No discount request detected in message:', userMessage);
     }
 
     // ═══ TRY LOCAL INTENT ENGINE FIRST (no API call) ═══
     // Only for clear, unambiguous intents that don't need AI conversation
     const localResult = await handleLocalIntent(userMessage);
-    console.log('[LOCAL_INTENT] Result:', localResult.handled ? 'HANDLED' : 'PASSED_TO_AI', '| Intent:', localResult.intent);
     if (localResult.handled) {
       setConversationHistory(prev => [...prev.slice(-8),
       { role: 'user', text: userMessage },
@@ -1866,17 +1847,15 @@ CURRENT STATE:
       ];
 
       // Call Groq with fallback across models
-      const { response, usedModel } = await callGroqWithFallback(chatMessages, groqTools);
+      const { response } = await callGroqWithFallback(chatMessages, groqTools);
       const message = response.choices[0]?.message;
       const toolCalls = message?.tool_calls || [];
-      console.log('[GROQ] Response from model:', usedModel, '| Tool calls:', toolCalls.length);
 
       // Process tool calls
       for (const toolCall of toolCalls) {
         const fnName = toolCall.function.name;
         let args: any = {};
         try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch { args = {}; }
-        console.log('[TOOL_CALL]', fnName, args);
 
         if (fnName === 'search_inventory') {
           const { products, metadata } = await hybridSearch(args.query, {
@@ -1966,12 +1945,9 @@ CURRENT STATE:
           didShowSomething = true;
         } else if (fnName === 'generate_coupon') {
           // RAG-backed coupon generation — validates against bottom_price, injects into cart session
-          console.log('[COUPON] generate_coupon called. currentNegotiationAttempts=', currentNegotiationAttempts, 'newRudenessScore=', newRudenessScore);
-          console.log('[COUPON] Block condition check: (', currentNegotiationAttempts, '<', 2, '=', currentNegotiationAttempts < 2, ') && (', newRudenessScore, '<', 3, '=', newRudenessScore < 3, ')');
 
           // HARD BLOCK: Prevent coupon generation on first 1-2 attempts (unless rude)
           if (currentNegotiationAttempts < 2 && newRudenessScore < 3) {
-            console.log('[COUPON] ✅ BLOCKED - Too early (attempt', currentNegotiationAttempts, '). Forcing conversational response.');
             let probingResponses: string[];
 
             if (currentNegotiationAttempts === 0) {
@@ -2009,11 +1985,8 @@ CURRENT STATE:
             newRudenessScore
           );
 
-          console.log('[COUPON] Result:', couponResult.success ? 'SUCCESS' : 'REFUSED/FAILED', 'refused=', couponResult.refused);
-
           if (couponResult.refused) {
             // Rudeness surcharge — injected as negative discount into cart session
-            console.log('[COUPON] SURCHARGE APPLIED:', Math.abs(couponResult.discountPercent), '% due to rudeness');
             applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
             setNegotiationAttempts(0); // Reset after surcharge
             setMessages(prev => [...prev, {
@@ -2032,7 +2005,6 @@ CURRENT STATE:
             addToast(`${surcharge}% surcharge for rudeness`, 'error');
           } else {
             // Success — inject coupon directly into cart session
-            console.log('[COUPON] DISCOUNT APPLIED:', couponResult.discountPercent, '% for', couponResult.reason);
             applyNegotiatedDiscount(couponResult.couponCode, couponResult.discountPercent);
             setNegotiationAttempts(0); // Reset after successful discount
             setShowDiscountToast({
@@ -2103,7 +2075,6 @@ CURRENT STATE:
       // BUT: Don't override negotiation block messages!
       if (message?.content && !negotiationBlocked) {
         finalClerkResponse = message.content;
-        console.log('[AI_RESPONSE] Text content received:', finalClerkResponse.substring(0, 100) + '...');
 
         // SAFETY CHECK: If AI mentions discounts in text without calling tool, block it
         const mentionsDiscount = /\b(\d+%|\d+\s*percent|percent.*off|discount.*granted|you.*got.*discount|here.*your.*discount|applied.*discount|giving.*you)/i.test(finalClerkResponse);
@@ -2130,13 +2101,10 @@ CURRENT STATE:
             return [...prev, { role: 'assistant', text: finalClerkResponse }];
           });
         }
-      } else if (negotiationBlocked) {
-        console.log('[AI_RESPONSE] Ignoring AI text response - negotiation was blocked');
       }
 
       // Safety net: if Groq returned neither content nor recognized tool calls, respond conversationally
       if (!didShowSomething) {
-        console.log('[SAFETY] No response shown yet, providing fallback');
         const fallbackResponses = [
           "Tell me more about what you're looking for — I've got great taste, but I need a little direction here.",
           "I'm listening! What kind of vibe are we going for today? Occasion? Style? Budget? All of the above?",
@@ -2157,7 +2125,6 @@ CURRENT STATE:
         ];
       });
 
-      console.log('[CONVERSATION_HISTORY] Updated. Current length:', conversationHistory.length + 2);
 
     } catch (error: any) {
       console.error("Clerk error:", error);
@@ -2210,7 +2177,6 @@ CURRENT STATE:
 
       // NEVER grant discounts in error scenarios
       if (isDiscountRequest) {
-        console.log('[ERROR_HANDLER] Discount request in error scenario - BLOCKING');
         setMessages(prev => [...prev, {
           role: 'assistant',
           text: "I'd love to help with that, but I need to get my systems back online first. Try asking again in a moment."
@@ -2251,11 +2217,6 @@ CURRENT STATE:
     setIsRedirecting(true);
     try {
       // Mock checkout for demo purposes - replace with actual Stripe implementation
-      console.log('[CHECKOUT] Mock checkout initiated:', {
-        cartItems: cart,
-        total: cartTotal,
-        discount: negotiatedDiscount
-      });
       // In a real app, you would call your API here:
       // const response = await fetch('/api/checkout', { ... });
       // const { sessionId } = await response.json();

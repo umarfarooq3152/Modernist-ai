@@ -75,6 +75,22 @@ async function handleEvent(event: Stripe.Event) {
           })
           .eq("id", orderId);
         if (error) throw error;
+
+        // Decrement stock for each purchased item (atomic: floors at 0, skips NULL stock)
+        const { data: items } = await supabase
+          .from("checkout_items")
+          .select("item_id")
+          .eq("order_id", orderId);
+
+        if (items && items.length > 0) {
+          const quantityMap = new Map<string, number>();
+          for (const item of items as { item_id: string }[]) {
+            quantityMap.set(item.item_id, (quantityMap.get(item.item_id) ?? 0) + 1);
+          }
+          for (const [productId, qty] of quantityMap.entries()) {
+            await supabase.rpc("decrement_stock", { p_product_id: productId, p_quantity: qty });
+          }
+        }
       }
       break;
     }

@@ -7,17 +7,17 @@ import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import CartSidebar from './components/CartSidebar';
-import AIChatAgent from './components/AIChatAgent';
+const AIChatAgent = React.lazy(() => import('./components/AIChatAgent'));
 import AuthModal from './components/AuthModal';
 import HeroSection from './components/HeroSection';
-import ProductDetail from './pages/ProductDetail';
-import Checkout from './pages/Checkout';
-import OrderHistory from './pages/OrderHistory';
-import Profile from './pages/Profile';
-import Admin from './pages/Admin';
-import Search from './pages/Search';
-import Wishlist from './pages/Wishlist';
-import PasswordReset from './pages/PasswordReset';
+const ProductDetail = React.lazy(() => import('./pages/ProductDetail'));
+const Checkout = React.lazy(() => import('./pages/Checkout'));
+const OrderHistory = React.lazy(() => import('./pages/OrderHistory'));
+const Profile = React.lazy(() => import('./pages/Profile'));
+const Admin = React.lazy(() => import('./pages/Admin'));
+const Search = React.lazy(() => import('./pages/Search'));
+const Wishlist = React.lazy(() => import('./pages/Wishlist'));
+const PasswordReset = React.lazy(() => import('./pages/PasswordReset'));
 import { ProgressiveBlur } from './components/ui/progressive-blur';
 import { motion } from 'framer-motion';
 import { RefreshCcw, Sparkles, SlidersHorizontal, Info, CheckCircle, AlertCircle, X, ExternalLink, Plus } from 'lucide-react';
@@ -222,7 +222,6 @@ const ToastManager: React.FC = () => {
 
 const ProductGrid: React.FC = () => {
   const { products, currentCategory, activeVibe, isCurating, isInitialLoading, sortOrder, setSortOrder, resetArchive } = useStore();
-  console.log('[ProductGrid] render: products.length=', products.length, 'isInitialLoading=', isInitialLoading, 'isCurating=', isCurating, 'productIds=', products.map(p => p.id));
 
   if (isInitialLoading) {
     return (
@@ -460,22 +459,24 @@ const AppContent: React.FC = () => {
       <GlobalLoader />
       {!isAdminPath && <Navbar />}
       <main className="flex-grow">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/product/:id" element={<ProductDetail />} />
-          <Route path="/checkout" element={<Checkout />} />
-          <Route path="/orders" element={<OrderHistory />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/admin/*" element={<AdminGuard><Admin /></AdminGuard>} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/wishlist" element={<Wishlist />} />
-          <Route path="/password-reset" element={<PasswordReset />} />
-        </Routes>
+        <React.Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/product/:id" element={<ProductDetail />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/orders" element={<OrderHistory />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/admin/*" element={<AdminGuard><Admin /></AdminGuard>} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/wishlist" element={<Wishlist />} />
+            <Route path="/password-reset" element={<PasswordReset />} />
+          </Routes>
+        </React.Suspense>
       </main>
       {!isAdminPath && <Footer />}
       {!isAdminPath && <CartSidebar />}
       {!isAdminPath && <QuickViewModal />}
-      {!isAdminPath && <AIChatAgent />}
+      {!isAdminPath && <React.Suspense fallback={null}><AIChatAgent /></React.Suspense>}
       <AuthModal />
       <ToastManager />
     </div>

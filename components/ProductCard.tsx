@@ -14,6 +14,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { addToCart, setQuickViewProduct } = useStore();
   const [isHovered, setIsHovered] = useState(false);
 
+  const isSoldOut = product.stock_quantity === 0;
+  const isLowStock = product.stock_quantity != null && product.stock_quantity > 0 &&
+    product.low_stock_threshold != null && product.stock_quantity <= product.low_stock_threshold;
+
   // Calculate average rating
   const averageRating = product.reviews && product.reviews.length > 0
     ? product.reviews.reduce((sum, review) => sum + review.rating, 0) / product.reviews.length
@@ -23,7 +27,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
   return (
     <div
-      className="product-card group flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-6 duration-700"
+      className={`product-card group flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-6 duration-700 ${isSoldOut ? 'opacity-70' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -35,6 +39,19 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <span className="text-[10px] opacity-80">{reviewCount}</span>
         </div>
         <div className="price-badge">${product.price.toLocaleString()}</div>
+
+        {/* Sold out / low stock indicators */}
+        {isSoldOut && (
+          <div className="absolute top-3 left-3 z-10 bg-black/80 text-white text-[8px] uppercase tracking-[0.35em] font-black px-2.5 py-1">
+            Sold Out
+          </div>
+        )}
+        {isLowStock && (
+          <div className="absolute top-3 left-3 z-10 bg-white/90 text-black text-[8px] uppercase tracking-[0.35em] font-black px-2.5 py-1 border border-black/10">
+            {product.stock_quantity} left
+          </div>
+        )}
+
         {/* Wishlist button — top-right corner */}
         <div className="absolute top-3 right-3 z-10">
           <WishlistButton
@@ -48,19 +65,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             src={product.image_url}
             alt={product.name}
             loading="lazy"
-            className="object-cover w-full h-full transition-all duration-[1.5s] ease-out group-hover:scale-105 group-hover:brightness-90"
+            className={`object-cover w-full h-full transition-all duration-[1.5s] ease-out group-hover:scale-105 group-hover:brightness-90 ${isSoldOut ? 'grayscale' : ''}`}
           />
         </Link>
 
         {/* Minimal Quick Actions - Appearing on hover with absolute precision */}
         <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
           <div className="flex flex-col gap-3 pointer-events-auto">
-            <button
-              onClick={(e) => { e.preventDefault(); addToCart(product); }}
-              className="bg-black/90 dark:bg-white/90 text-white dark:text-black px-8 py-3 text-[9px] uppercase tracking-[0.4em] font-black hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white transition-all transform translate-y-4 group-hover:translate-y-0 duration-500"
-            >
-              Add to Archive
-            </button>
+            {isSoldOut ? (
+              <span className="bg-black/60 text-white/60 px-8 py-3 text-[9px] uppercase tracking-[0.4em] font-black cursor-not-allowed">
+                Sold Out
+              </span>
+            ) : (
+              <button
+                onClick={(e) => { e.preventDefault(); addToCart(product); }}
+                className="bg-black/90 dark:bg-white/90 text-white dark:text-black px-8 py-3 text-[9px] uppercase tracking-[0.4em] font-black hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white transition-all transform translate-y-4 group-hover:translate-y-0 duration-500"
+              >
+                Add to Archive
+              </button>
+            )}
             <button
               onClick={(e) => { e.preventDefault(); setQuickViewProduct(product); }}
               className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-8 py-3 text-[9px] uppercase tracking-[0.4em] font-black hover:bg-white hover:text-black transition-all transform translate-y-4 group-hover:translate-y-0 duration-500 delay-75"
@@ -87,4 +110,4 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   );
 };
 
-export default ProductCard;
+export default React.memo(ProductCard);

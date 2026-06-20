@@ -17,8 +17,10 @@ import { supabase } from './supabase';
 // Constants
 // ─────────────────────────────────────────────────────────
 
-const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY
-  || 'pk_test_51T0JatPgX2QsMZYBxlY2EkKhIt4y7AB8oHrVKKNh6ZWImXi0IwogVhv6BdmeR8zejYlO4QPLC4mqylwfAb24qvR400iPBlZHJN';
+const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+if (!STRIPE_PUBLIC_KEY) {
+  throw new Error('[MODERNIST:Stripe] VITE_STRIPE_PUBLIC_KEY is not set.');
+}
 
 // ─────────────────────────────────────────────────────────
 // Stripe.js Singleton

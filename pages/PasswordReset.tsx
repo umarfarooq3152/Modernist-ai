@@ -18,8 +18,6 @@ const PasswordReset: React.FC = () => {
     const hash = window.location.hash;
     
     if (!loading && !hash.includes('access_token') && !recoveryTokens) {
-      // No recovery tokens, redirect to home
-      console.log('No recovery tokens, redirecting to home');
       navigate('/', { replace: true });
     }
   }, [loading, recoveryTokens, navigate]);
@@ -45,12 +43,7 @@ const PasswordReset: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      console.log('Starting password update...');
-      
       await updatePasswordAfterRecovery(newPassword);
-      
-      console.log('Password updated successfully, redirecting to home...');
-      
       addToast('Password reset successfully! Please log in with your new password.', 'success');
       
       // Redirect to home page (user is NOT logged in)

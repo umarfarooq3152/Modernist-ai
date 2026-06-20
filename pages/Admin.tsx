@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Dashboard } from '@/components/dashboard';
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Package,

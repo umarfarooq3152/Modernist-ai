@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, CreditCard, Truck, ShieldCheck, Tag, Lock, User as UserIcon, MapPin, Navigation, Globe, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, CreditCard, Truck, ShieldCheck, Tag, Lock, MapPin, Navigation, Globe, Check, Loader2, AlertTriangle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';

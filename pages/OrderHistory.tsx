@@ -62,7 +62,6 @@ const OrderHistory: React.FC = () => {
               addToast('✓ Order confirmation email sent successfully!', 'success');
             }
             setEmailSent(true);
-            console.log('✅ Order confirmation email sent');
           }
         } catch (error) {
           console.error('Error sending confirmation email:', error);

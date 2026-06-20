@@ -71,7 +71,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (error) {
         // Profile doesn't exist - create one
         if (error.code === 'PGRST116') {
-          console.log('Profile not found, creating new profile with user data...');
 
           // Get current user data from auth.users to populate profile
           const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -112,11 +111,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           if (insertError) {
             console.error('Failed to create profile:', insertError);
-            console.log('Profile creation failed. Please run FIX_PROFILES_TABLE.sql in Supabase SQL Editor.');
             // Set empty profile to prevent infinite loading
             setProfile({ id: userId, role: 'user', email, first_name: firstName, last_name: lastName } as PatronProfile);
           } else {
-            console.log('Profile created successfully:', newProfile);
             setProfile(newProfile);
           }
         } else {
@@ -140,16 +137,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const checkSession = async () => {
       try {
         const hash = window.location.hash;
-        const search = window.location.search;
-
-        console.log('Checking session - Hash:', hash.substring(0, 50), 'Search:', search.substring(0, 50));
 
         // Handle password recovery tokens ONLY (don't login user)
         if (hash.includes('access_token') && hash.includes('type=recovery')) {
-          console.log('Recovery tokens detected - storing for password reset only');
-
           if (recoverySessionSet.current) {
-            console.log('Recovery tokens already processed, skipping...');
             setLoading(false);
             return;
           }
@@ -164,7 +155,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const refreshToken = params.get('refresh_token');
 
             if (accessToken && refreshToken) {
-              console.log('Storing recovery tokens (NOT logging in)...');
               setRecoveryTokens({ access: accessToken, refresh: refreshToken });
 
               // Navigate to the password-reset route (strip tokens from URL so
@@ -179,22 +169,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         }
 
-        // OAuth login or normal session check
-        if (search.includes('access_token') || hash.includes('access_token')) {
-          console.log('OAuth callback detected - Supabase will auto-establish session');
-        }
-
         // Get session (automatically handles OAuth tokens from URL)
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         if (!isMounted) return;
-
-        console.log('Session check result:', !!initialSession, initialSession?.user?.email);
-
-        if (initialSession) {
-          console.log('Session found! Setting user and fetching profile...');
-        } else {
-          console.log('No active session');
-        }
 
         setSession(initialSession);
         const currentUser = initialSession?.user ?? null;
@@ -220,19 +197,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!isMounted) return;
 
       // Ignore auth state changes during password recovery update
-      if (isUpdatingRecoveryPassword.current) {
-        console.log('Ignoring auth state change during password recovery:', event);
-        return;
-      }
-
-      console.log('Auth state change event:', event, 'Session exists:', !!session, 'User:', session?.user?.email);
+      if (isUpdatingRecoveryPassword.current) return;
 
       setSession(session);
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
       if (currentUser) {
-        console.log('User authenticated:', currentUser.email);
         await fetchProfile(currentUser.id);
       } else {
         setProfile(null);
@@ -324,8 +295,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw new Error('No recovery tokens found. Please request a new password reset link.');
     }
 
-    console.log('Updating password with recovery tokens (NO LOGIN)...');
-
     // Set flag to prevent auth state changes from logging user in
     isUpdatingRecoveryPassword.current = true;
 
@@ -341,8 +310,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error('Recovery session expired. Please request a new password reset link.');
       }
 
-      console.log('Temporary session created, updating password...');
-
       // Update password
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
@@ -353,12 +320,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw updateError;
       }
 
-      console.log('Password updated successfully! Signing out...');
-
       // Sign out immediately - DON'T keep user logged in
       await supabase.auth.signOut();
-
-      console.log('Signed out successfully');
 
     } catch (error: any) {
       console.error('Exception during password update:', error);

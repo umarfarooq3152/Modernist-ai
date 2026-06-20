@@ -46,6 +46,8 @@ interface StoreContextValue extends StoreState {
   fetchUserOrders: (userId: string) => Promise<OrderRecord[]>;
   fetchUserReviews: (userId: string) => Promise<Review[]>;
   submitReview: (productId: string, rating: number, text: string, userId: string, userName: string) => Promise<boolean>;
+  updateReview: (reviewId: string, rating: number, text: string) => Promise<boolean>;
+  deleteReview: (reviewId: string) => Promise<boolean>;
   toggleTheme: () => void;
   lockCart: () => void;
   unlockCart: () => void;
@@ -178,14 +180,11 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       }
     case 'UPDATE_PRODUCT_FILTER':
       let filtered = state.allProducts;
-      console.log('[FILTER] UPDATE_PRODUCT_FILTER action.payload:', action.payload);
-      console.log('[FILTER] state.allProducts.length:', state.allProducts.length);
       try {
         // Priority 1: If specific product IDs provided (from RAG), use them directly
         if (action.payload.productIds && action.payload.productIds.length > 0) {
           const idSet = new Set(action.payload.productIds.map((id: string | number) => String(id).toLowerCase()));
           const byId = filtered.filter(p => idSet.has(String(p.id).toLowerCase()));
-          console.log('[FILTER] ID filtering: requested=', action.payload.productIds.length, 'matched=', byId.length);
           if (byId.length > 0) filtered = byId;
         }
         // Only do text matching if productIds didn't narrow results
@@ -211,7 +210,6 @@ const storeReducer = (state: StoreState, action: StoreAction): StoreState => {
       }
       // Safety net: never blank
       if (filtered.length === 0) filtered = state.allProducts;
-      console.log('[FILTER] Final filtered.length:', filtered.length, 'IDs:', filtered.slice(0, 5).map(p => p.id));
       return { ...state, products: filtered };
     case 'SET_SORT_ORDER':
       let sorted = [...state.products];
@@ -326,13 +324,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return Math.max(0, Math.round(total));
   }, [cartSubtotal, synergyDiscount, state.negotiatedDiscount]);
 
-  const addToCart = useCallback((product: Product) => dispatch({ type: 'ADD_TO_CART', payload: product }), []);
-  const addToCartWithVariant = useCallback((product: Product, selectedSize?: string, selectedColor?: string) =>
-    dispatch({ type: 'ADD_TO_CART_VARIANT', payload: { product, selectedSize, selectedColor } }), []);
+  const addToCart = useCallback((product: Product) => {
+    if (product.stock_quantity === 0) { addToast('This piece is sold out', 'error'); return; }
+    dispatch({ type: 'ADD_TO_CART', payload: product });
+  }, [addToast]);
+  const addToCartWithVariant = useCallback((product: Product, selectedSize?: string, selectedColor?: string) => {
+    if (product.stock_quantity === 0) { addToast('This piece is sold out', 'error'); return; }
+    dispatch({ type: 'ADD_TO_CART_VARIANT', payload: { product, selectedSize, selectedColor } });
+  }, [addToast]);
   const addToCartWithQuantity = useCallback((productId: string, quantity: number) => {
     const product = state.allProducts.find(p => p.id === productId);
-    if (product) dispatch({ type: 'ADD_TO_CART_QUANTITY', payload: { product, quantity } });
-  }, [state.allProducts]);
+    if (!product) return;
+    if (product.stock_quantity === 0) { addToast('This piece is sold out', 'error'); return; }
+    dispatch({ type: 'ADD_TO_CART_QUANTITY', payload: { product, quantity } });
+  }, [state.allProducts, addToast]);
 
   const removeFromCart = useCallback((productId: string) => dispatch({ type: 'REMOVE_FROM_CART', payload: productId }), []);
   const updateQuantity = useCallback((productId: string, quantity: number) => dispatch({ type: 'UPDATE_QUANTITY', payload: { id: productId, quantity } }), []);
@@ -416,20 +421,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const dbPayload = {
         user_id: log.user_id || null,
-        user_offer: log.discount_offered || 0,
-        clerk_response: log.clerk_response || "Audit",
+        user_email: log.user_email || null,
+        user_message: log.user_message || null,
+        clerk_response: log.clerk_response || null,
+        clerk_sentiment: log.clerk_sentiment || 'neutral',
+        discount_offered: log.discount_offered || 0,
+        negotiation_successful: log.negotiation_successful || false,
+        cart_snapshot: log.cart_snapshot || null,
         status: log.negotiation_successful ? 'accepted' : 'pending',
-        sentiment: log.clerk_sentiment || 'neutral',
-        cart_snapshot: log.cart_snapshot,
-        checkout_details: log.checkout_details,
-        shipping_address: log.shipping_address ? (typeof log.shipping_address === 'string' ? log.shipping_address : JSON.stringify(log.shipping_address)) : null,
-        metadata: {
-          user_email: log.user_email,
-          user_message: log.user_message,
-          discount_percent: log.discount_offered,
-          ...(log.metadata || {})
-        },
-        created_at: new Date().toISOString()
+        metadata: log.metadata || null,
       };
       await supabase.from('clerk_logs').insert([dbPayload]);
     } catch (e) {
@@ -556,9 +556,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           product_id: productId,
           user_id: userId,
           author: userName,
-          rating: rating,
-          text: text,
-          date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+          rating,
+          text,
+          verified_purchase: true,
         });
 
       if (error) {
@@ -576,6 +576,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, [addToast]);
 
+  const updateReview = useCallback(async (reviewId: string, rating: number, text: string) => {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({ rating, text, updated_at: new Date().toISOString() })
+        .eq('id', reviewId);
+      if (error) throw error;
+      addToast('Review updated', 'success');
+      return true;
+    } catch {
+      addToast('Failed to update review', 'error');
+      return false;
+    }
+  }, [addToast]);
+
+  const deleteReview = useCallback(async (reviewId: string) => {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .delete()
+        .eq('id', reviewId);
+      if (error) throw error;
+      addToast('Review removed', 'success');
+      return true;
+    } catch {
+      addToast('Failed to remove review', 'error');
+      return false;
+    }
+  }, [addToast]);
+
   const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
   const lockCart = useCallback(() => dispatch({ type: 'LOCK_CART' }), []);
   const unlockCart = useCallback(() => dispatch({ type: 'UNLOCK_CART' }), []);
@@ -585,7 +615,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addToCart, addToCartWithVariant, addToCartWithQuantity, removeFromCart, updateQuantity, toggleCart, openCart, toggleSearch,
     filterByCategory, searchProducts, updateProductFilter, setSortOrder, applyNegotiatedDiscount, setMood,
     clearCart, clearLastAdded, setQuickViewProduct, addToast, removeToast, resetArchive,
-    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, toggleTheme,
+    searchERP, syncERPProducts, createERPProduct, logClerkInteraction, fetchUserOrders, fetchUserReviews, submitReview, updateReview, deleteReview, toggleTheme,
     lockCart, unlockCart
   };
 
