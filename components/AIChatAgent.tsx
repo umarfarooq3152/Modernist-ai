@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Bot, ChevronRight, Percent, Camera, Wand2, RefreshCw, Check, Sparkles, PlusCircle, Activity, AlertCircle, Star, ShoppingBag, ExternalLink, ArrowUpDown, Tag, Search } from 'lucide-react';
+import { X, Bot, ChevronRight, Percent, AlertCircle, Star, ExternalLink, Tag, Search } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import Groq from 'groq-sdk';
@@ -63,8 +63,6 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   text: string;
   products?: Product[];
-  tryOnResult?: string;
-  isTryOn?: boolean;
   coupon?: { code: string; percent: number; reason: string };
   error?: boolean;
   searchMetadata?: { method: string; searchTime: number; resultsCount: number };
@@ -75,7 +73,6 @@ class BM25Ranker {
   private k1: number;
   private b: number;
   private avgDocLength: number = 0;
-  private docFrequencies: Map<string, number> = new Map();
   private idf: Map<string, number> = new Map();
 
   constructor(documents: { id: string; text: string }[], k1 = 1.5, b = 0.75) {
@@ -118,7 +115,6 @@ class BM25Ranker {
     termDocCounts.forEach((docSet, term) => {
       const df = docSet.size;
       this.idf.set(term, Math.log((N - df + 0.5) / (df + 0.5) + 1));
-      this.docFrequencies.set(term, df);
     });
   }
 
@@ -242,10 +238,7 @@ const AIChatAgent: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [isRetrieving, setIsRetrieving] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
   const [showDiscountToast, setShowDiscountToast] = useState<{ code: string, percent: number, reason: string } | null>(null);
-  const [userSelfie, setUserSelfie] = useState<string | null>(null);
-  const [isProcessingTryOn, setIsProcessingTryOn] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<{ role: string; text: string }[]>([]);
   const [rudenessScore, setRudenessScore] = useState(0);
   const [negotiationAttempts, setNegotiationAttempts] = useState(0);
@@ -268,12 +261,11 @@ const AIChatAgent: React.FC = () => {
   const [lastSuccessfulHaggle, setLastSuccessfulHaggle] = useState<{ couponCode: string; timestamp: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     allProducts, cart, addToCartWithQuantity, openCart, lastAddedProduct, clearLastAdded,
     updateProductFilter, applyNegotiatedDiscount, negotiatedDiscount, cartTotal, cartSubtotal, addToast,
-    logClerkInteraction, setSortOrder, removeFromCart, filterByCategory, toggleTheme, theme,
+    logClerkInteraction, setSortOrder, removeFromCart, filterByCategory,
     lockCart, unlockCart, isCartLocked, isInitialLoading
   } = useStore();
 
@@ -432,7 +424,7 @@ const AIChatAgent: React.FC = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, loading, isProcessingTryOn, isRetrieving]);
+  }, [messages, loading, isRetrieving]);
 
   useEffect(() => {
     try {
@@ -505,44 +497,6 @@ const AIChatAgent: React.FC = () => {
   const getAvgRating = (product: Product): number => {
     if (!product.reviews || product.reviews.length === 0) return 4.5;
     return +(product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length).toFixed(1);
-  };
-
-  const generateTryOn = async (userImage: string, product: Product) => {
-    setIsProcessingTryOn(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 4000));
-      const resultImageUrl = product.image_url;
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: `The reconstruction is complete. I've projected the ${product.name} silhouette onto your frame. It fits with archival precision.`,
-        tryOnResult: resultImageUrl,
-        isTryOn: true
-      }]);
-    } catch (error) {
-      console.error("Try-on synthesis failed:", error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: "Archival projection failed. The resonance between the frame and the garment was too volatile."
-      }]);
-    } finally {
-      setIsProcessingTryOn(false);
-    }
-  };
-
-  const handleSelfieUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setUserSelfie(base64String);
-        setMessages(prev => [...prev, {
-          role: 'user',
-          text: "I've uploaded my photo for virtual try-on."
-        }]);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const triggerPerfectPairRecommendation = async (product: Product) => {
@@ -980,11 +934,6 @@ const AIChatAgent: React.FC = () => {
       }
 
       // ═══ RATING/REVIEW FILTERING ═══
-      const getAvgRating = (p: Product): number => {
-        if (!p.reviews || p.reviews.length === 0) return 4.5;
-        return p.reviews.reduce((sum, r) => sum + r.rating, 0) / p.reviews.length;
-      };
-
       const hasRatingFilter = /(?:highest|best|top|most|good|great)\s*(?:rated|rating|reviews?)/i.test(q) ||
         /(?:rated|rating|reviews?)\s*(?:highest|best|top|most|good|great)/i.test(q);
       const hasLowRatingFilter = /(?:lowest|worst|bad|poor)\s*(?:rated|rating|reviews?)/i.test(q);
@@ -1373,11 +1322,7 @@ const AIChatAgent: React.FC = () => {
       if (isOnlyCategoryQuery && allProducts && allProducts.length > 0) {
         const categorySearchResults = semanticSearch(searchTerm);
         if (categorySearchResults.length > 0) {
-          const getProductRating = (p: Product): number => {
-            if (!p.reviews || p.reviews.length === 0) return 4.5;
-            return p.reviews.reduce((sum, r) => sum + r.rating, 0) / p.reviews.length;
-          };
-          const sortedResults = [...categorySearchResults].sort((a, b) => getProductRating(b) - getProductRating(a));
+          const sortedResults = [...categorySearchResults].sort((a, b) => getAvgRating(b) - getAvgRating(a));
           updateProductFilter({ query: searchTerm, productIds: sortedResults.map(p => p.id) });
 
           setMessages(prev => [...prev, {
@@ -1405,12 +1350,7 @@ const AIChatAgent: React.FC = () => {
         });
 
         if (categoryMatches.length > 1) {
-          // Show results in the grid instead of just a list
-          const getProductRating = (p: Product): number => {
-            if (!p.reviews || p.reviews.length === 0) return 4.5;
-            return p.reviews.reduce((sum, r) => sum + r.rating, 0) / p.reviews.length;
-          };
-          const sortedMatches = [...categoryMatches].sort((a, b) => getProductRating(b) - getProductRating(a));
+          const sortedMatches = [...categoryMatches].sort((a, b) => getAvgRating(b) - getAvgRating(a));
           updateProductFilter({ query: searchTerm, productIds: sortedMatches.map(p => p.id) });
 
           setMessages(prev => [...prev, {
@@ -1854,26 +1794,11 @@ const AIChatAgent: React.FC = () => {
 
     // Groq AI handling with RAG
     let finalClerkResponse = "";
-    let finalRagResults: any[] = [];
-    let didShowSomething = false; // Track if we showed any response
-    let negotiationBlocked = false; // Track if we blocked a discount attempt
+    let didShowSomething = false;
+    let negotiationBlocked = false;
 
     try {
       setIsRetrieving(true);
-
-      // Helper: race a promise against a timeout
-      const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
-        Promise.race([promise, sleep(ms).then(() => fallback)]);
-
-      // ERP search disabled per user request
-      // try {
-      //   const ragResultsRaw = await withTimeout(searchERP(userMessage), 3000, []);
-      //   finalRagResults = Array.isArray(ragResultsRaw)
-      //     ? ragResultsRaw.filter((r: any) => r.similarity >= 0.4)
-      //     : [];
-      // } catch { finalRagResults = []; }
-      finalRagResults = [];
-      setIsRetrieving(false);
 
       // Build Groq messages in OpenAI chat format
       const systemMessage: Groq.Chat.ChatCompletionMessageParam = {
@@ -1978,10 +1903,6 @@ CURRENT STATE:
               text: `Couldn't find that exact piece. Try searching first?`
             }]);
           }
-          didShowSomething = true;
-        } else if (fnName === 'remove_from_cart') {
-          removeFromCart(args.product_id);
-          setMessages(prev => [...prev, { role: 'assistant', text: "Gone! Having second thoughts? Happens to the best of us." }]);
           didShowSomething = true;
         } else if (fnName === 'sort_and_filter_store' || fnName === 'update_ui') {
           let message = 'Grid updated.';
@@ -2092,41 +2013,12 @@ CURRENT STATE:
             addToast(`${couponResult.discountPercent}% discount applied: ${couponResult.couponCode}`, 'success');
           }
           didShowSomething = true;
-        } else if (fnName === 'recommend_products') {
-          await handleLocalIntent('recommend something');
-          didShowSomething = true;
-        } else if (fnName === 'change_theme') {
-          const currentTheme = theme;
-          const targetMode = args.mode;
-
-          // Toggle if no mode specified, or switch to the specified mode
-          if (!targetMode || targetMode !== currentTheme) {
-            toggleTheme();
-            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-            const themeResponses = [
-              `${newTheme === 'dark' ? 'Lights dimmed' : 'Let there be light'}. The floor adapts to your vision.`,
-              `Switched to ${newTheme} mode. Better?`,
-              `${newTheme === 'dark' ? 'Dark mode engaged' : 'Light mode restored'}. The collection remains unchanged.`,
-            ];
-            setMessages(prev => [...prev, { role: 'assistant', text: themeResponses[Math.floor(Math.random() * themeResponses.length)] }]);
-            addToast(`${newTheme === 'dark' ? 'Dark' : 'Light'} mode activated`, 'success');
-          } else {
-            setMessages(prev => [...prev, { role: 'assistant', text: `Already in ${currentTheme} mode. Looking good.` }]);
-          }
-          didShowSomething = true;
-
         } else if (fnName === 'initiate_checkout') {
           await handleLocalIntent('checkout');
           didShowSomething = true;
         } else if (fnName === 'show_cart_summary') {
           await handleLocalIntent('show my cart');
           didShowSomething = true;
-        } else if (fnName === 'check_inventory') {
-          const product = allProducts.find(p => p.id === args.product_name_or_id || p.name.toLowerCase().includes((args.product_name_or_id || '').toLowerCase()));
-          if (product) {
-            setMessages(prev => [...prev, { role: 'assistant', text: `${product.name} — $${product.price}\n\n${product.description}\n\nCategory: ${product.category} | Tags: ${(product.tags || []).join(', ')}` }]);
-            didShowSomething = true;
-          }
         }
       }
 
@@ -2377,15 +2269,6 @@ CURRENT STATE:
 
   return (
     <>
-      <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleSelfieUpload} />
-
-      {isRedirecting && (
-        <div className="fixed inset-0 z-[500] bg-white dark:bg-black flex flex-col items-center justify-center">
-          <div className="modern-loader mb-12"></div>
-          <p className="text-[10px] uppercase tracking-[0.6em] font-black">Securing Acquisition</p>
-        </div>
-      )}
-
       {showDiscountToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[300] w-[90%] max-w-sm">
           <div className="bg-black dark:bg-white text-white dark:text-black p-5 border border-white/20 dark:border-black/20 shadow-2xl animate-in slide-in-from-top-12 duration-700">
@@ -2493,12 +2376,6 @@ CURRENT STATE:
                 )}
 
                 {m.coupon && <CouponCard coupon={m.coupon} />}
-
-                {m.isTryOn && m.tryOnResult && (
-                  <div className="mt-3 w-48 aspect-[3/4] overflow-hidden border border-black/10 dark:border-white/10">
-                    <img src={m.tryOnResult} alt="Virtual try-on" className="w-full h-full object-cover" />
-                  </div>
-                )}
               </div>
             ))}
 
@@ -2513,7 +2390,7 @@ CURRENT STATE:
               </div>
             )}
 
-            {loading && !isProcessingTryOn && !isRetrieving && (
+            {loading && !isRetrieving && (
               <div className="flex space-x-3 px-5">
                 <div className="w-2 h-2 bg-black dark:bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
                 <div className="w-2 h-2 bg-black dark:bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
