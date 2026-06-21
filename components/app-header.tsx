@@ -35,7 +35,7 @@ export function AppHeader() {
 			</div>
 			<div className="flex items-center gap-3">
 				<Link
-					to="/"
+					to="/?preview=customer"
 					className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 				>
 					<ShoppingBagIcon size={13} />

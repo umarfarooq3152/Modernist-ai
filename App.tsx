@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route, useLocation, Link, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, useLocation, useSearchParams, Link, Navigate } from 'react-router-dom';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -448,8 +448,11 @@ const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const HomeOrAdmin: React.FC = () => {
   const { user, profile, loading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const isPreview = searchParams.get('preview') === 'customer';
   if (loading) return null;
-  if (user && profile?.role === 'admin') return <Navigate to="/admin" replace />;
+  // Admins go to /admin unless they explicitly clicked "View as Customer"
+  if (user && profile?.role === 'admin' && !isPreview) return <Navigate to="/admin" replace />;
   return <HomePage />;
 };
 
