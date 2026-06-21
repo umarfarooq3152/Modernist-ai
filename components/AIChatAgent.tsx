@@ -1778,16 +1778,23 @@ const AIChatAgent: React.FC = () => {
     const localResult = await handleLocalIntent(userMessage);
     if (localResult.handled) {
       setConversationHistory(prev => [...prev.slice(-8),
-      { role: 'user', text: userMessage },
-      { role: 'assistant', text: `[local:${localResult.intent}]` }
+        { role: 'user', text: userMessage },
+        { role: 'assistant', text: `[local:${localResult.intent}]` }
       ]);
-      logClerkInteraction({
-        user_id: user?.id, user_email: user?.email,
-        user_message: userMessage, clerk_response: `[local:${localResult.intent}]`,
-        clerk_sentiment: 'neutral', discount_offered: 0, negotiation_successful: false,
-        cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price, size: i.selectedSize, color: i.selectedColor })),
-        metadata: { mode: 'local', intent: localResult.intent }
-      });
+      // Only log discount-related and checkout local events — not navigation noise
+      const LOGGABLE_LOCAL_INTENTS = ['discount_negotiation_start', 'discount_empty_cart', 'haggle_rude_surcharge', 'checkout', 'nsfw_deflect'];
+      if (LOGGABLE_LOCAL_INTENTS.includes(localResult.intent || '')) {
+        logClerkInteraction({
+          user_id: user?.id, user_email: user?.email,
+          user_message: userMessage,
+          clerk_response: `[local:${localResult.intent}]`,
+          clerk_sentiment: localResult.intent === 'haggle_rude_surcharge' ? 'rude' : 'neutral',
+          discount_offered: 0,
+          negotiation_successful: false,
+          cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price })),
+          metadata: { mode: 'local', intent: localResult.intent }
+        });
+      }
       setLoading(false);
       return;
     }
@@ -2073,13 +2080,23 @@ CURRENT STATE:
         const lastAssistantMsg = messages[messages.length - 1]?.role === 'assistant'
           ? messages[messages.length - 1].text
           : finalClerkResponse || '(action performed)';
-
         return [...prev.slice(-8),
-        { role: 'user', text: userMessage },
-        { role: 'assistant', text: lastAssistantMsg }
+          { role: 'user', text: userMessage },
+          { role: 'assistant', text: lastAssistantMsg }
         ];
       });
 
+      // Log AI-handled interactions (discount-related or any Groq response)
+      logClerkInteraction({
+        user_id: user?.id, user_email: user?.email,
+        user_message: userMessage,
+        clerk_response: finalClerkResponse || '(tool action)',
+        clerk_sentiment: newRudenessScore >= 3 ? 'rude' : negotiationAttempts > 0 ? 'negotiating' : 'neutral',
+        discount_offered: currentNegotiationAttempts > 0 ? currentNegotiationAttempts * 5 : 0,
+        negotiation_successful: false,
+        cart_snapshot: cart.map(i => ({ id: i.product.id, name: i.product.name, qty: i.quantity, price: i.product.price })),
+        metadata: { mode: 'groq', negotiation_attempt: currentNegotiationAttempts }
+      });
 
     } catch (error: any) {
       console.error("Clerk error:", error);

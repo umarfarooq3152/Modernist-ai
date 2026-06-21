@@ -91,12 +91,15 @@ export interface AdminNegotiation {
   id: string;
   created_at: string;
   user_id: string | null;
-  user_offer: number;
-  clerk_response: string;
-  status: string;
-  sentiment: string;
+  user_email: string | null;
+  user_message: string | null;
+  clerk_response: string | null;
+  clerk_sentiment: string | null;
+  discount_offered: number;
+  negotiation_successful: boolean;
   cart_snapshot: any;
-  metadata: { user_email?: string; user_message?: string };
+  status: string;
+  metadata: any;
 }
 
 export interface PaginatedResponse<T> {

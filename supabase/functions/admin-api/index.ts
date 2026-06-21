@@ -378,9 +378,33 @@ async function handleGetNegotiations(url: URL): Promise<Response> {
   const { from, to } = parsePagination(url);
   const status = url.searchParams.get("status") || "";
 
+  // Only show actual negotiation/AI interactions — exclude trivial local navigation events
+  // (greetings, searches, add_to_cart, filter, sort, etc. logged with [local:*] and no discount)
   let query = serviceClient
     .from("clerk_logs")
     .select("*", { count: "exact" })
+    .or("discount_offered.gt.0,negotiation_successful.eq.true,clerk_sentiment.neq.neutral")
+    .not("clerk_response", "like", "[local:greeting]")
+    .not("clerk_response", "like", "[local:farewell]")
+    .not("clerk_response", "like", "[local:help]")
+    .not("clerk_response", "like", "[local:search]")
+    .not("clerk_response", "like", "[local:search_loading]")
+    .not("clerk_response", "like", "[local:search_no_inventory]")
+    .not("clerk_response", "like", "[local:filter_category]")
+    .not("clerk_response", "like", "[local:show_all]")
+    .not("clerk_response", "like", "[local:show_cheapest]")
+    .not("clerk_response", "like", "[local:show_expensive]")
+    .not("clerk_response", "like", "[local:sort_asc]")
+    .not("clerk_response", "like", "[local:sort_desc]")
+    .not("clerk_response", "like", "[local:add_to_cart]")
+    .not("clerk_response", "like", "[local:add_all]")
+    .not("clerk_response", "like", "[local:remove_from_cart]")
+    .not("clerk_response", "like", "[local:show_cart]")
+    .not("clerk_response", "like", "[local:recommend]")
+    .not("clerk_response", "like", "[local:inventory_check]")
+    .not("clerk_response", "like", "[local:show_category_for_add]")
+    .not("clerk_response", "like", "[local:add_clarification_needed]")
+    .not("clerk_response", "like", "[local:nsfw_deflect]")
     .order("created_at", { ascending: false })
     .range(from, to);
 

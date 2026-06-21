@@ -906,8 +906,8 @@ const AdminNegotiations: React.FC = () => {
 
   const acceptedCount = logs.filter(l => l.status === 'accepted').length;
   const successRate = logs.length > 0 ? Math.round((acceptedCount / logs.length) * 100) : 0;
-  const avgConcession = logs.length > 0
-    ? Math.round(logs.reduce((sum, l) => sum + (l.user_offer || 0), 0) / logs.length)
+  const avgConcession = logs.filter(l => (l.discount_offered || 0) > 0).length > 0
+    ? Math.round(logs.filter(l => (l.discount_offered || 0) > 0).reduce((sum, l) => sum + l.discount_offered, 0) / logs.filter(l => (l.discount_offered || 0) > 0).length)
     : 0;
 
   return (
@@ -946,8 +946,9 @@ const AdminNegotiations: React.FC = () => {
         {loading ? (
           [...Array(4)].map((_, i) => <div key={i} className="h-28 bg-black/5 dark:bg-white/5 animate-pulse" />)
         ) : logs.map(log => {
-          const email = log.metadata?.user_email || 'Guest';
-          const message = log.metadata?.user_message || 'N/A';
+          const email = log.user_email || log.metadata?.user_email || 'Guest';
+          const message = log.user_message || 'N/A';
+          const sentiment = log.clerk_sentiment;
           return (
             <div key={log.id} className="bg-white/40 dark:bg-white/[0.04] backdrop-blur-md border border-black/5 dark:border-white/10 p-6 flex flex-col md:flex-row gap-6 animate-in fade-in duration-500">
               <div className="w-10 h-10 bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-sans text-lg shrink-0">
@@ -961,17 +962,22 @@ const AdminNegotiations: React.FC = () => {
                   </div>
                   <div className="flex gap-2">
                     <StatusBadge status={log.status} />
-                    {log.sentiment && <span className="text-[8px] uppercase tracking-widest font-black bg-black dark:bg-white text-white dark:text-black px-3 py-1 italic">{log.sentiment}</span>}
+                    {sentiment && <span className="text-[8px] uppercase tracking-widest font-black bg-black dark:bg-white text-white dark:text-black px-3 py-1 italic">{sentiment}</span>}
+                    {(log.discount_offered || 0) !== 0 && (
+                      <span className={`text-[8px] uppercase tracking-widest font-black px-3 py-1 ${log.discount_offered > 0 ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                        {log.discount_offered > 0 ? `−${log.discount_offered}%` : `+${Math.abs(log.discount_offered)}% surcharge`}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3 border-t border-black/5 dark:border-white/5">
                   <div>
-                    <p className="text-[9px] uppercase tracking-widest text-gray-400 font-black mb-1">Customer Offered</p>
+                    <p className="text-[9px] uppercase tracking-widest text-gray-400 font-black mb-1">Customer Said</p>
                     <p className="text-sm font-light italic dark:text-gray-300">"{message}"</p>
                   </div>
                   <div>
                     <p className="text-[9px] uppercase tracking-widest text-gray-400 font-black mb-1">The Clerk Responds</p>
-                    <p className="text-sm font-light italic dark:text-gray-300">"{log.clerk_response}"</p>
+                    <p className="text-sm font-light italic dark:text-gray-300 line-clamp-3">"{log.clerk_response || '—'}"</p>
                   </div>
                 </div>
               </div>
