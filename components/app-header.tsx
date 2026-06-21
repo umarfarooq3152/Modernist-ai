@@ -5,7 +5,8 @@ import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { navLinks } from "@/components/app-shared";
 import { CustomSidebarTrigger } from "@/components/custom-sidebar-trigger";
 import { NavUser } from "@/components/nav-user";
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
+import { ShoppingBagIcon } from "lucide-react";
 
 export function AppHeader() {
 	const { pathname } = useLocation();
@@ -33,6 +34,13 @@ export function AppHeader() {
 				<AppBreadcrumbs page={activeItem} />
 			</div>
 			<div className="flex items-center gap-3">
+				<Link
+					to="/"
+					className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+				>
+					<ShoppingBagIcon size={13} />
+					<span className="hidden sm:inline">View as Customer</span>
+				</Link>
 				<Separator
 					className="h-4 data-[orientation=vertical]:self-center"
 					orientation="vertical"

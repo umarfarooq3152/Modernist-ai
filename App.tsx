@@ -446,6 +446,13 @@ const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+const HomeOrAdmin: React.FC = () => {
+  const { user, profile, loading } = useAuth();
+  if (loading) return null;
+  if (user && profile?.role === 'admin') return <Navigate to="/admin" replace />;
+  return <HomePage />;
+};
+
 const AppContent: React.FC = () => {
   const location = useLocation();
   const isAdminPath = location.pathname.startsWith('/admin');
@@ -462,7 +469,7 @@ const AppContent: React.FC = () => {
       <main className="flex-grow">
         <React.Suspense fallback={null}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<HomeOrAdmin />} />
             <Route path="/product/:id" element={<ProductDetail />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/orders" element={<OrderHistory />} />
