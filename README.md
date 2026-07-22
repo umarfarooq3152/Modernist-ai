@@ -2,7 +2,7 @@
 
 A luxury fine jewellery e-commerce platform with an AI bargaining agent — "The Clerk" — that negotiates discounts with customers in real time using tool-calling and a price-floor enforcement contract.
 
-**Live demo:** _coming soon_
+**Live:** [modernist-ai.vercel.app](https://modernist-ai.vercel.app)
 
 ---
 
@@ -104,7 +104,7 @@ Stripe ──► signed webhook ──────────► Edge Fn: strip
 
 ---
 
-## Local Setup
+## Setup / Installation
 
 ### Prerequisites
 - Node.js 18+
@@ -160,19 +160,27 @@ supabase/migrations/20260613_variants.sql
 supabase/migrations/20260613_coupons.sql
 ```
 
-### 5. Run
+---
+
+## Usage
+
+Start the dev server:
 
 ```bash
 npm run dev   # http://localhost:3000
 ```
 
-### Stripe webhook (local testing)
+Browse the catalogue, add items to cart, and try the AI Clerk chat widget to negotiate a discount — it will only apply one through the `apply_discount` tool call, never by just agreeing in text. Sign in via Supabase Auth (email/password or Google) to check out, leave reviews, and save a wishlist. Visit `/admin` (an admin account is required) for inventory, orders, negotiation tracking, and coupons.
+
+For local Stripe webhook testing:
 
 ```bash
 stripe listen --forward-to http://localhost:54321/functions/v1/stripe-webhook
 ```
 
 Copy the webhook signing secret printed by the CLI and set it as `STRIPE_WEBHOOK_SECRET` in your local Edge Function environment.
+
+Other scripts: `npm run build` (production build), `npm run preview` (preview the build).
 
 ---
 
